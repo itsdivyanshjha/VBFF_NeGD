@@ -1,0 +1,37 @@
+# Voice Form Assistant - Python Dependencies
+
+# Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+websockets==12.0
+python-multipart==0.0.6
+
+# Data Validation
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Speech-to-Text (OpenAI Whisper)
+openai-whisper==20231117
+numpy==1.24.3
+
+# Audio Processing
+pydub==0.25.1
+
+# Text-to-Speech
+gTTS==2.5.0
+
+# LLM Client
+httpx==0.26.0
+
+# Database / Session Storage
+redis==5.0.1
+
+# Utilities
+python-dotenv==1.0.0
+
+# For Whisper dependencies
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Optional: For better performance
+# faster-whisper==0.10.0  # Alternative to openai-whisper
