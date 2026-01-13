@@ -12,6 +12,7 @@ import subprocess
 from typing import List
 import numpy as np
 from pydub import AudioSegment
+from scipy import signal
 
 from ..config import settings
 
@@ -72,14 +73,20 @@ class AudioProcessor:
             if samples is None or len(samples) == 0:
                 return np.array([], dtype=np.float32)
 
+            # Apply audio preprocessing to improve recognition
+            samples = self._preprocess_audio(samples)
+            
             peak = float(np.max(np.abs(samples))) if len(samples) else 0.0
             rms = float(np.sqrt(np.mean(np.square(samples)))) if len(samples) else 0.0
             logger.info(f"Audio metrics - peak={peak:.4f}, rms={rms:.4f}, samples={len(samples)}")
 
-            if peak < 0.05:
+            # Very low thresholds to accept quiet speech and different mic sensitivities
+            # AGC will boost quiet audio, so we want to be very permissive here
+            # Only reject truly silent audio
+            if peak < 0.003:
                 logger.warning(f"Audio peak too low ({peak:.4f}). Mic may not be capturing voice. Rejecting.")
                 return np.array([], dtype=np.float32)
-            if rms < 0.02:
+            if rms < 0.001:
                 logger.warning(f"Audio RMS too low ({rms:.4f}). No clear speech detected. Rejecting.")
                 return np.array([], dtype=np.float32)
 
@@ -190,6 +197,101 @@ class AudioProcessor:
             samples = raw.astype(np.float32)
 
         return samples
+
+    def _preprocess_audio(self, audio: np.ndarray) -> np.ndarray:
+        """
+        Apply audio preprocessing to improve speech recognition.
+        
+        Steps:
+        1. High-pass filter to remove low-frequency noise
+        2. Noise reduction using spectral subtraction
+        3. Auto-gain control (AGC) to normalize volume
+        4. Dynamic range compression
+        
+        Args:
+            audio: Input audio array (float32, normalized to [-1, 1])
+            
+        Returns:
+            Preprocessed audio array
+        """
+        if len(audio) == 0:
+            return audio
+        
+        # Make a copy to avoid modifying original
+        processed = audio.copy()
+        
+        # 1. High-pass filter to remove low-frequency noise (below 80Hz)
+        # This removes rumble, wind noise, etc.
+        nyquist = self.target_sample_rate / 2
+        high_pass_freq = 80.0 / nyquist  # Normalized frequency
+        if high_pass_freq < 1.0:
+            try:
+                b, a = signal.butter(4, high_pass_freq, btype='high')
+                processed = signal.filtfilt(b, a, processed)
+                logger.debug("Applied high-pass filter (80Hz cutoff)")
+            except Exception as e:
+                logger.warning(f"High-pass filter failed: {e}")
+        
+        # 2. Noise reduction using spectral gating
+        # Estimate noise floor from first 100ms (assuming silence at start)
+        noise_samples = int(0.1 * self.target_sample_rate)  # 100ms
+        if len(processed) > noise_samples:
+            noise_floor = np.percentile(np.abs(processed[:noise_samples]), 10)
+            # Apply very gentle noise gate - increased multiplier from 3 to 5
+            # This makes the gate less aggressive and preserves more speech
+            noise_gate_threshold = max(noise_floor * 5, 0.0005)
+            processed = np.where(
+                np.abs(processed) > noise_gate_threshold,
+                processed,
+                processed * 0.3  # Reduce noise by 70% (was 90% - now less aggressive)
+            )
+            logger.debug(f"Applied noise gate (threshold: {noise_gate_threshold:.6f})")
+        
+        # 3. Auto-gain control (AGC) - normalize to target RMS
+        # Target RMS for good speech recognition (not too loud, not too quiet)
+        target_rms = 0.15
+        current_rms = np.sqrt(np.mean(np.square(processed)))
+
+        if current_rms > 0.0005:  # Avoid division by zero
+            # Calculate gain factor, but limit to avoid distortion
+            gain_factor = target_rms / current_rms
+            # Increased gain limit from 10x to 20x for very quiet microphones
+            # This is especially helpful for built-in laptop mics and quiet environments
+            gain_factor = min(gain_factor, 20.0)
+            # Apply gain if audio is quiet - lowered threshold from 1.2 to 1.05
+            if gain_factor > 1.05:  # Boost even slightly quiet audio
+                processed = processed * gain_factor
+                logger.debug(f"Applied AGC (gain: {gain_factor:.2f}x, RMS: {current_rms:.4f} -> {np.sqrt(np.mean(np.square(processed))):.4f})")
+        
+        # 4. Dynamic range compression
+        # Soft compression to even out volume variations
+        threshold = 0.3  # Start compressing above this level
+        ratio = 3.0  # Compression ratio
+        
+        # Apply soft-knee compression
+        abs_audio = np.abs(processed)
+        compressed = np.copy(processed)
+        
+        # Find samples above threshold
+        above_threshold = abs_audio > threshold
+        
+        if np.any(above_threshold):
+            # Calculate compression amount
+            excess = abs_audio[above_threshold] - threshold
+            compressed_amount = excess / ratio
+            new_level = threshold + compressed_amount
+            
+            # Apply compression while preserving sign
+            compressed[above_threshold] = np.sign(processed[above_threshold]) * new_level
+            logger.debug(f"Applied compression ({np.sum(above_threshold)} samples above threshold)")
+        
+        # 5. Final normalization to prevent clipping
+        max_val = np.max(np.abs(compressed))
+        if max_val > 0.95:  # Prevent clipping
+            compressed = compressed * (0.95 / max_val)
+            logger.debug(f"Normalized to prevent clipping (max was {max_val:.4f})")
+        
+        return compressed.astype(np.float32)
 
 
 # Global instance

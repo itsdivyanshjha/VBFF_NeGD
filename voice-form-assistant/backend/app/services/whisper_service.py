@@ -22,6 +22,8 @@ class WhisperService:
         self._model_name = settings.WHISPER_MODEL
         self._device = settings.WHISPER_DEVICE
         self._lock = asyncio.Lock()
+        # Audio is already heavily preprocessed in `audio_processor` (AGC/NR/compression).
+        # Keep any additional processing here conservative to avoid increasing hallucinations.
 
     async def load_model(self) -> None:
         """Load the Whisper model. Called on startup."""
@@ -62,9 +64,23 @@ class WhisperService:
         if audio_data.dtype != np.float32:
             audio_data = audio_data.astype(np.float32)
 
-        # Normalize if needed
-        if np.abs(audio_data).max() > 1.0:
-            audio_data = audio_data / np.abs(audio_data).max()
+        # Trim leading/trailing near-silence to reduce hallucinations on short clips.
+        audio_data = self._trim_silence(audio_data, sample_rate=16000)
+
+        # Normalize if needed (prevent clipping)
+        max_abs = np.abs(audio_data).max()
+        if max_abs > 1.0:
+            audio_data = audio_data / max_abs
+            logger.debug(f"Normalized audio (max was {max_abs:.4f})")
+
+        # Optional gentle RMS normalization (audio_processor already does AGC).
+        # Only act if extremely quiet to avoid over-amplifying noise.
+        rms = float(np.sqrt(np.mean(np.square(audio_data)))) if len(audio_data) else 0.0
+        if 0.0005 < rms < 0.03:
+            target_rms = 0.10
+            gain = min(target_rms / rms, 3.0)
+            audio_data = np.clip(audio_data * gain, -1.0, 1.0)
+            logger.debug(f"Applied gentle RMS gain (RMS: {rms:.4f}, gain: {gain:.2f}x)")
 
         logger.debug(f"Transcribing audio: {len(audio_data)} samples")
 
@@ -74,11 +90,18 @@ class WhisperService:
         transcribe_options = {
             "fp16": False if self._device == "cpu" else True,
             "task": "transcribe",
-            # Reduce hallucinations / improve stability for short utterances
+            # Anti-hallucination / stability for short utterances
             "temperature": 0.0,
             "condition_on_previous_text": False,
             "beam_size": 5,
-            "no_speech_threshold": 0.6,
+            # Default is ~0.6. Lower means *more* sensitive but can increase false positives/hallucinations.
+            # 0.4 is a good tradeoff for your "short field answer" use-case.
+            "no_speech_threshold": 0.4,
+            # Default is -1.0. More negative = more permissive (accept lower-confidence text).
+            # We revert closer to default to reduce hallucinations on names/short utterances.
+            "logprob_threshold": -1.0,
+            # Default is 2.4. Keep default.
+            "compression_ratio_threshold": 2.4,
         }
 
         if language:
@@ -102,6 +125,40 @@ class WhisperService:
         except Exception as e:
             logger.error(f"Transcription error: {e}")
             raise
+
+    def _trim_silence(self, audio_data: np.ndarray, sample_rate: int = 16000) -> np.ndarray:
+        """
+        Trim leading/trailing near-silence based on a simple amplitude threshold.
+        This is intentionally lightweight (no VAD dependency) and helps reduce hallucinations
+        on short inputs that contain lots of silence.
+        """
+        if audio_data is None or len(audio_data) == 0:
+            return audio_data
+
+        abs_audio = np.abs(audio_data)
+        max_abs = float(abs_audio.max())
+        if max_abs < 1e-6:
+            return audio_data
+
+        # Threshold: relative to peak, with a small absolute floor.
+        thr = max(0.01 * max_abs, 0.002)
+        voiced = np.where(abs_audio > thr)[0]
+        if voiced.size == 0:
+            return audio_data
+
+        start = int(voiced[0])
+        end = int(voiced[-1])
+
+        # Keep a bit of padding so we don't clip phonemes.
+        pad = int(0.10 * sample_rate)  # 100ms
+        start = max(0, start - pad)
+        end = min(len(audio_data) - 1, end + pad)
+
+        # If trimming would produce an extremely short clip, keep original.
+        if (end - start + 1) < int(0.25 * sample_rate):
+            return audio_data
+
+        return audio_data[start : end + 1]
 
     def _calculate_confidence(self, result: dict) -> float:
         """

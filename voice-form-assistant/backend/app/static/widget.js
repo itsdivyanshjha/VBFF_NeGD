@@ -530,6 +530,8 @@
             // Disable the record button for multiple reasons (processing, playback).
             // This prevents recording while the assistant is speaking (common cause of "rubbish" transcripts).
             this._disableReasons = { processing: false, playback: false };
+            this._sessionStarted = false;
+            this._onOpenCallback = null;
         }
 
         create() {
@@ -598,7 +600,13 @@
                 progressText: this.container.querySelector('.va-progress-text')
             };
 
-            this.elements.toggleBtn.addEventListener('click', () => this.toggle());
+            this.elements.toggleBtn.addEventListener('click', async () => {
+                this.toggle();
+                // If opening the panel, trigger onOpen callback
+                if (this.isOpen && this._onOpenCallback) {
+                    await this.onOpen(this._onOpenCallback);
+                }
+            });
             this.elements.closeBtn.addEventListener('click', () => this.hide());
 
             console.log('[VoiceAssistant] UI created');
@@ -622,6 +630,18 @@
             }
         }
 
+        async onOpen(startSessionCallback) {
+            // Called when panel is opened - triggers session initialization
+            if (startSessionCallback && !this._sessionStarted) {
+                await startSessionCallback();
+                this._sessionStarted = true;
+            }
+        }
+
+        resetSession() {
+            this._sessionStarted = false;
+        }
+
         setStatus(message, type = 'info') {
             this.elements.status.textContent = message;
             this.elements.status.className = `va-status va-status-${type}`;
@@ -629,7 +649,9 @@
 
         setCurrentField(fieldLabel, fieldId) {
             if (fieldLabel) {
-                this.elements.currentField.textContent = `Current: ${fieldLabel}`;
+                // Clean up the label - remove content in parentheses and extra whitespace
+                const cleanLabel = fieldLabel.replace(/\s*\([^)]*\)/g, '').trim();
+                this.elements.currentField.textContent = `Current: ${cleanLabel}`;
                 this.elements.currentField.style.display = 'block';
             } else {
                 this.elements.currentField.style.display = 'none';
@@ -752,13 +774,18 @@
         }
 
         setupEventListeners() {
+            // Set up callback for when panel is opened (to trigger session start + greeting)
+            this.ui._onOpenCallback = async () => {
+                await this.startSession();
+            };
+
             this.ui.elements.recordBtn.addEventListener('click', async () => {
-                if (this.audioHandler.audioContext && 
+                if (this.audioHandler.audioContext &&
                     this.audioHandler.audioContext.state === 'suspended') {
                     await this.audioHandler.audioContext.resume();
                     console.log('[VoiceAssistant] AudioContext resumed after user interaction');
                 }
-                
+
                 if (this.isRecording) {
                     this.stopRecording();
                 } else {
@@ -849,6 +876,10 @@
                     this.ui.setStatus('Confirm value');
                     this.ui.setTranscript(message.text);
                     this.ui.showConfirmation(message.text, message.value);
+                    // Update current field label during confirmation
+                    if (message.fieldLabel || message.fieldId) {
+                        this.ui.setCurrentField(message.fieldLabel || message.fieldId, message.fieldId);
+                    }
                     this.ui.showPlaybackState();
                     await this.audioHandler.playAudio(message.audio, message.text);
                     this.ui.hidePlaybackState();
@@ -865,6 +896,8 @@
                     }
                     if (message.nextField) {
                         this.formAnalyzer.highlightField(message.nextField.id);
+                        // Update the current field label to show the next field
+                        this.ui.setCurrentField(message.nextField.label, message.nextField.id);
                     }
                     this.ui.hideProcessingState();
                     break;
@@ -885,6 +918,10 @@
                 case 'clarify':
                     this.ui.setStatus('Please repeat');
                     this.ui.setTranscript(message.text);
+                    // Keep current field label visible during repeat/clarify
+                    if (message.fieldLabel || message.fieldId) {
+                        this.ui.setCurrentField(message.fieldLabel || message.fieldId, message.fieldId);
+                    }
                     this.ui.showPlaybackState();
                     await this.audioHandler.playAudio(message.audio, message.text);
                     this.ui.hidePlaybackState();
@@ -894,6 +931,10 @@
                 case 'audio_quality_error':
                     this.ui.setStatus('Speak louder', 'error');
                     this.ui.setTranscript(message.text);
+                    // Keep current field label visible during audio quality errors
+                    if (message.fieldLabel || message.fieldId) {
+                        this.ui.setCurrentField(message.fieldLabel || message.fieldId, message.fieldId);
+                    }
                     this.ui.showPlaybackState();
                     await this.audioHandler.playAudio(message.audio, message.text);
                     this.ui.hidePlaybackState();
@@ -917,6 +958,10 @@
                 case 'error':
                     this.ui.showError(message.error || 'An error occurred');
                     this.ui.setTranscript(message.text);
+                    // Keep current field label visible during errors
+                    if (message.fieldLabel || message.fieldId) {
+                        this.ui.setCurrentField(message.fieldLabel || message.fieldId, message.fieldId);
+                    }
                     this.ui.showPlaybackState();
                     await this.audioHandler.playAudio(message.audio, message.text);
                     this.ui.hidePlaybackState();
@@ -951,9 +996,10 @@
         }
 
         async startRecording() {
+            // Check if session is initialized
             if (!this.sessionId) {
-                await this.startSession();
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                this.ui.showError('Please wait for the assistant to greet you first');
+                return;
             }
 
             // Prevent recording while assistant audio is playing; otherwise the mic often captures TTS.
