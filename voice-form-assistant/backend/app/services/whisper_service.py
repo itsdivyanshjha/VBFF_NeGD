@@ -67,14 +67,16 @@ class WhisperService:
         # Trim leading/trailing near-silence to reduce hallucinations on short clips.
         audio_data = self._trim_silence(audio_data, sample_rate=16000)
 
-        # Normalize if needed (prevent clipping)
+        # Soft-clip reducer: if peak > 0.95, compress gently to leave headroom
+        audio_data = self._soft_clip(audio_data, threshold=0.95, ratio=3.0)
+
+        # Normalize if needed (prevent hard clipping)
         max_abs = np.abs(audio_data).max()
         if max_abs > 1.0:
             audio_data = audio_data / max_abs
-            logger.debug(f"Normalized audio (max was {max_abs:.4f})")
+            logger.debug(f"Hard-normalized audio (max was {max_abs:.4f})")
 
-        # Optional gentle RMS normalization (audio_processor already does AGC).
-        # Only act if extremely quiet to avoid over-amplifying noise.
+        # Gentle RMS boost only if extremely quiet (audio_processor already does AGC)
         rms = float(np.sqrt(np.mean(np.square(audio_data)))) if len(audio_data) else 0.0
         if 0.0005 < rms < 0.03:
             target_rms = 0.10
@@ -97,9 +99,8 @@ class WhisperService:
             # Default is ~0.6. Lower means *more* sensitive but can increase false positives/hallucinations.
             # 0.4 is a good tradeoff for your "short field answer" use-case.
             "no_speech_threshold": 0.4,
-            # Default is -1.0. More negative = more permissive (accept lower-confidence text).
-            # We revert closer to default to reduce hallucinations on names/short utterances.
-            "logprob_threshold": -1.0,
+            # Slightly more permissive so uncommon names aren't blanked out
+            "logprob_threshold": -1.2,
             # Default is 2.4. Keep default.
             "compression_ratio_threshold": 2.4,
         }
@@ -196,6 +197,14 @@ class WhisperService:
 
         # Clamp to [0, 1] range
         return float(np.clip(avg_confidence, 0.0, 1.0))
+
+    def _soft_clip(self, audio: np.ndarray, threshold: float = 0.95, ratio: float = 3.0) -> np.ndarray:
+        """Gentle soft-knee compression above threshold to avoid hard clipping."""
+        abs_audio = np.abs(audio)
+        excess = np.maximum(abs_audio - threshold, 0.0)
+        compressed = threshold + excess / ratio
+        scale = compressed / (abs_audio + 1e-8)
+        return audio * np.where(abs_audio > threshold, scale, 1.0)
 
     async def detect_language(self, audio_data: np.ndarray) -> str:
         """
