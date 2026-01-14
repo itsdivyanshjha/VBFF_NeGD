@@ -192,30 +192,14 @@
     transition: width 0.05s ease-out;
 }
 
-/* Speak Now Indicator */
-#voice-assistant-widget .va-speak-now {
+/* Speak Hint - Subtle text below button */
+#voice-assistant-widget .va-speak-hint {
     text-align: center;
-    padding: 12px;
-    background: #4caf50;
-    color: white;
-    border-radius: 8px;
-    margin-bottom: 12px;
-    font-weight: 600;
-    animation: va-speak-pulse 1s ease-in-out infinite;
+    font-size: 12px;
+    color: #4caf50;
+    margin-top: 8px;
+    font-weight: 500;
     display: none;
-}
-
-#voice-assistant-widget .va-speak-now.va-visible {
-    display: block;
-}
-
-@keyframes va-speak-pulse {
-    0%, 100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.7;
-    }
 }
 
 /* Playback indicator */
@@ -251,6 +235,31 @@
     margin-bottom: 16px;
 }
 
+/* Start Button - Play icon */
+#voice-assistant-widget .va-start-btn {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 3px solid #2e7d32;
+    background: #4caf50;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+#voice-assistant-widget .va-start-btn:hover {
+    background: #45a049;
+    transform: scale(1.05);
+}
+
+#voice-assistant-widget .va-start-btn:active {
+    transform: scale(0.95);
+}
+
+/* Record Button - Microphone */
 #voice-assistant-widget .va-record-btn {
     width: 64px;
     height: 64px;
@@ -274,14 +283,29 @@
     cursor: not-allowed;
 }
 
+/* Ready to record - subtle pulse */
+#voice-assistant-widget .va-record-btn.va-ready-to-record {
+    animation: va-ready-pulse 2s ease-in-out infinite;
+}
+
+@keyframes va-ready-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(25, 118, 210, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(25, 118, 210, 0);
+    }
+}
+
+/* Recording state - stronger pulse */
 #voice-assistant-widget .va-record-btn.va-recording {
     background: #ff4757;
     border-color: #ff4757;
     color: white;
-    animation: va-pulse 1.5s ease-in-out infinite;
+    animation: va-recording-pulse 1.5s ease-in-out infinite;
 }
 
-@keyframes va-pulse {
+@keyframes va-recording-pulse {
     0%, 100% {
         transform: scale(1);
         box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.4);

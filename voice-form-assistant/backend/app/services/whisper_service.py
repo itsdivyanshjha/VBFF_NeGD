@@ -22,8 +22,6 @@ class WhisperService:
         self._model_name = settings.WHISPER_MODEL
         self._device = settings.WHISPER_DEVICE
         self._lock = asyncio.Lock()
-        # Audio is already heavily preprocessed in `audio_processor` (AGC/NR/compression).
-        # Keep any additional processing here conservative to avoid increasing hallucinations.
 
     async def load_model(self) -> None:
         """Load the Whisper model. Called on startup."""
@@ -64,25 +62,24 @@ class WhisperService:
         if audio_data.dtype != np.float32:
             audio_data = audio_data.astype(np.float32)
 
-        # Trim leading/trailing near-silence to reduce hallucinations on short clips.
-        audio_data = self._trim_silence(audio_data, sample_rate=16000)
-
-        # Soft-clip reducer: if peak > 0.95, compress gently to leave headroom
-        audio_data = self._soft_clip(audio_data, threshold=0.95, ratio=3.0)
-
-        # Normalize if needed (prevent hard clipping)
+        # Normalize if needed (prevent clipping)
         max_abs = np.abs(audio_data).max()
         if max_abs > 1.0:
             audio_data = audio_data / max_abs
-            logger.debug(f"Hard-normalized audio (max was {max_abs:.4f})")
-
-        # Gentle RMS boost only if extremely quiet (audio_processor already does AGC)
-        rms = float(np.sqrt(np.mean(np.square(audio_data)))) if len(audio_data) else 0.0
-        if 0.0005 < rms < 0.03:
-            target_rms = 0.10
-            gain = min(target_rms / rms, 3.0)
-            audio_data = np.clip(audio_data * gain, -1.0, 1.0)
-            logger.debug(f"Applied gentle RMS gain (RMS: {rms:.4f}, gain: {gain:.2f}x)")
+            logger.debug(f"Normalized audio (max was {max_abs:.4f})")
+        
+        # Additional check: if audio is very quiet, apply gentle boost
+        # This helps with microphones that capture at low levels
+        rms = np.sqrt(np.mean(np.square(audio_data)))
+        if 0.001 < rms < 0.1:  # Quiet but not silent
+            # Apply gentle boost (max 3x) to improve recognition
+            boost_factor = min(0.15 / rms, 3.0)
+            audio_data = audio_data * boost_factor
+            # Re-normalize to prevent clipping
+            max_abs = np.abs(audio_data).max()
+            if max_abs > 0.95:
+                audio_data = audio_data * (0.95 / max_abs)
+            logger.debug(f"Applied gentle boost (RMS: {rms:.4f}, boost: {boost_factor:.2f}x)")
 
         logger.debug(f"Transcribing audio: {len(audio_data)} samples")
 
@@ -92,17 +89,19 @@ class WhisperService:
         transcribe_options = {
             "fp16": False if self._device == "cpu" else True,
             "task": "transcribe",
-            # Anti-hallucination / stability for short utterances
+            # Reduce hallucinations / improve stability for short utterances
             "temperature": 0.0,
             "condition_on_previous_text": False,
             "beam_size": 5,
-            # Default is ~0.6. Lower means *more* sensitive but can increase false positives/hallucinations.
-            # 0.4 is a good tradeoff for your "short field answer" use-case.
-            "no_speech_threshold": 0.4,
-            # Slightly more permissive so uncommon names aren't blanked out
-            "logprob_threshold": -1.2,
-            # Default is 2.4. Keep default.
-            "compression_ratio_threshold": 2.4,
+            # Lowered from 0.6 to 0.15 for much better sensitivity to quiet/accented speech
+            # This makes Whisper much more likely to detect speech with Indian accents
+            # Lower values mean less likely to classify audio as silence
+            "no_speech_threshold": 0.15,
+            # Lower logprob threshold to accept lower confidence transcriptions
+            # This helps significantly with accented speech (Indian English, Hindi)
+            "logprob_threshold": -1.2,  # More permissive than default (-1.0)
+            # Compressed timestamp token threshold - helps with faster speech
+            "compression_ratio_threshold": 2.4,  # Default is 2.4
         }
 
         if language:
@@ -126,40 +125,6 @@ class WhisperService:
         except Exception as e:
             logger.error(f"Transcription error: {e}")
             raise
-
-    def _trim_silence(self, audio_data: np.ndarray, sample_rate: int = 16000) -> np.ndarray:
-        """
-        Trim leading/trailing near-silence based on a simple amplitude threshold.
-        This is intentionally lightweight (no VAD dependency) and helps reduce hallucinations
-        on short inputs that contain lots of silence.
-        """
-        if audio_data is None or len(audio_data) == 0:
-            return audio_data
-
-        abs_audio = np.abs(audio_data)
-        max_abs = float(abs_audio.max())
-        if max_abs < 1e-6:
-            return audio_data
-
-        # Threshold: relative to peak, with a small absolute floor.
-        thr = max(0.01 * max_abs, 0.002)
-        voiced = np.where(abs_audio > thr)[0]
-        if voiced.size == 0:
-            return audio_data
-
-        start = int(voiced[0])
-        end = int(voiced[-1])
-
-        # Keep a bit of padding so we don't clip phonemes.
-        pad = int(0.10 * sample_rate)  # 100ms
-        start = max(0, start - pad)
-        end = min(len(audio_data) - 1, end + pad)
-
-        # If trimming would produce an extremely short clip, keep original.
-        if (end - start + 1) < int(0.25 * sample_rate):
-            return audio_data
-
-        return audio_data[start : end + 1]
 
     def _calculate_confidence(self, result: dict) -> float:
         """
@@ -197,14 +162,6 @@ class WhisperService:
 
         # Clamp to [0, 1] range
         return float(np.clip(avg_confidence, 0.0, 1.0))
-
-    def _soft_clip(self, audio: np.ndarray, threshold: float = 0.95, ratio: float = 3.0) -> np.ndarray:
-        """Gentle soft-knee compression above threshold to avoid hard clipping."""
-        abs_audio = np.abs(audio)
-        excess = np.maximum(abs_audio - threshold, 0.0)
-        compressed = threshold + excess / ratio
-        scale = compressed / (abs_audio + 1e-8)
-        return audio * np.where(abs_audio > threshold, scale, 1.0)
 
     async def detect_language(self, audio_data: np.ndarray) -> str:
         """

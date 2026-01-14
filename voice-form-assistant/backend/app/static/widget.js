@@ -530,8 +530,6 @@
             // Disable the record button for multiple reasons (processing, playback).
             // This prevents recording while the assistant is speaking (common cause of "rubbish" transcripts).
             this._disableReasons = { processing: false, playback: false };
-            this._sessionStarted = false;
-            this._onOpenCallback = null;
         }
 
         create() {
@@ -549,21 +547,26 @@
                         <button class="va-close-btn">&times;</button>
                     </div>
                     <div class="va-content">
-                        <div class="va-status">Click the mic to start</div>
+                        <div class="va-status">Click Start to begin</div>
                         <div class="va-current-field" style="display: none;"></div>
-                        <div class="va-speak-now">Speak Now</div>
                         <canvas class="va-waveform" width="280" height="60"></canvas>
                         <div class="va-mic-level-container">
                             <div class="va-mic-level-bar"></div>
                         </div>
                         <div class="va-transcript"></div>
                         <div class="va-controls">
-                            <button class="va-record-btn" title="Click to record">
+                            <button class="va-start-btn" title="Start session">
+                                <svg viewBox="0 0 24 24" width="32" height="32">
+                                    <path fill="currentColor" d="M8 5v14l11-7z"/>
+                                </svg>
+                            </button>
+                            <button class="va-record-btn" style="display: none;" title="Click to record">
                                 <svg viewBox="0 0 24 24" width="32" height="32">
                                     <circle cx="12" cy="12" r="10" fill="currentColor"/>
                                 </svg>
                             </button>
                         </div>
+                        <div class="va-speak-hint" style="display: none;">Speak now</div>
                         <div class="va-confirmation" style="display: none;">
                             <div class="va-confirm-text"></div>
                             <div class="va-confirm-buttons">
@@ -587,10 +590,11 @@
                 closeBtn: this.container.querySelector('.va-close-btn'),
                 status: this.container.querySelector('.va-status'),
                 currentField: this.container.querySelector('.va-current-field'),
-                speakNow: this.container.querySelector('.va-speak-now'),
+                speakHint: this.container.querySelector('.va-speak-hint'),
                 waveform: this.container.querySelector('.va-waveform'),
                 micLevelBar: this.container.querySelector('.va-mic-level-bar'),
                 transcript: this.container.querySelector('.va-transcript'),
+                startBtn: this.container.querySelector('.va-start-btn'),
                 recordBtn: this.container.querySelector('.va-record-btn'),
                 confirmation: this.container.querySelector('.va-confirmation'),
                 confirmText: this.container.querySelector('.va-confirm-text'),
@@ -600,13 +604,7 @@
                 progressText: this.container.querySelector('.va-progress-text')
             };
 
-            this.elements.toggleBtn.addEventListener('click', async () => {
-                this.toggle();
-                // If opening the panel, trigger onOpen callback
-                if (this.isOpen && this._onOpenCallback) {
-                    await this.onOpen(this._onOpenCallback);
-                }
-            });
+            this.elements.toggleBtn.addEventListener('click', () => this.toggle());
             this.elements.closeBtn.addEventListener('click', () => this.hide());
 
             console.log('[VoiceAssistant] UI created');
@@ -628,18 +626,6 @@
             } else {
                 this.show();
             }
-        }
-
-        async onOpen(startSessionCallback) {
-            // Called when panel is opened - triggers session initialization
-            if (startSessionCallback && !this._sessionStarted) {
-                await startSessionCallback();
-                this._sessionStarted = true;
-            }
-        }
-
-        resetSession() {
-            this._sessionStarted = false;
         }
 
         setStatus(message, type = 'info') {
@@ -690,7 +676,7 @@
         hidePlaybackState() {
             this._disableReasons.playback = false;
             this._updateRecordDisabled();
-            this.showSpeakNow();
+            this.showSpeakHint();
         }
 
         _updateRecordDisabled() {
@@ -700,15 +686,39 @@
             );
         }
 
-        showSpeakNow() {
-            if (this.elements.speakNow) {
-                this.elements.speakNow.classList.add('va-visible');
+        showStartButton() {
+            if (this.elements.startBtn) {
+                this.elements.startBtn.style.display = 'block';
+            }
+            if (this.elements.recordBtn) {
+                this.elements.recordBtn.style.display = 'none';
             }
         }
 
-        hideSpeakNow() {
-            if (this.elements.speakNow) {
-                this.elements.speakNow.classList.remove('va-visible');
+        showRecordButton() {
+            if (this.elements.startBtn) {
+                this.elements.startBtn.style.display = 'none';
+            }
+            if (this.elements.recordBtn) {
+                this.elements.recordBtn.style.display = 'block';
+            }
+        }
+
+        showSpeakHint() {
+            if (this.elements.speakHint) {
+                this.elements.speakHint.style.display = 'block';
+            }
+            if (this.elements.recordBtn) {
+                this.elements.recordBtn.classList.add('va-ready-to-record');
+            }
+        }
+
+        hideSpeakHint() {
+            if (this.elements.speakHint) {
+                this.elements.speakHint.style.display = 'none';
+            }
+            if (this.elements.recordBtn) {
+                this.elements.recordBtn.classList.remove('va-ready-to-record');
             }
         }
 
@@ -774,18 +784,24 @@
         }
 
         setupEventListeners() {
-            // Set up callback for when panel is opened (to trigger session start + greeting)
-            this.ui._onOpenCallback = async () => {
-                await this.startSession();
-            };
-
-            this.ui.elements.recordBtn.addEventListener('click', async () => {
-                if (this.audioHandler.audioContext &&
+            // Start button - initiates session without recording
+            this.ui.elements.startBtn.addEventListener('click', async () => {
+                if (this.audioHandler.audioContext && 
                     this.audioHandler.audioContext.state === 'suspended') {
                     await this.audioHandler.audioContext.resume();
                     console.log('[VoiceAssistant] AudioContext resumed after user interaction');
                 }
+                await this.startSession();
+            });
 
+            // Record button - only for recording responses
+            this.ui.elements.recordBtn.addEventListener('click', async () => {
+                if (this.audioHandler.audioContext && 
+                    this.audioHandler.audioContext.state === 'suspended') {
+                    await this.audioHandler.audioContext.resume();
+                    console.log('[VoiceAssistant] AudioContext resumed after user interaction');
+                }
+                
                 if (this.isRecording) {
                     this.stopRecording();
                 } else {
@@ -855,6 +871,8 @@
                     this.ui.showPlaybackState();
                     await this.audioHandler.playAudio(message.audio, message.text);
                     this.ui.hidePlaybackState();
+                    // Now show record button for user to respond
+                    this.ui.showRecordButton();
                     break;
 
                 case 'ask_field':
@@ -870,20 +888,23 @@
                     await this.audioHandler.playAudio(message.audio, message.text);
                     this.ui.hidePlaybackState();
                     this.ui.hideProcessingState();
+                    // Show record button so user can respond
+                    this.ui.showRecordButton();
                     break;
 
                 case 'confirmation_request':
                     this.ui.setStatus('Confirm value');
-                    this.ui.setTranscript(message.text);
-                    this.ui.showConfirmation(message.text, message.value);
-                    // Update current field label during confirmation
                     if (message.fieldLabel || message.fieldId) {
                         this.ui.setCurrentField(message.fieldLabel || message.fieldId, message.fieldId);
                     }
+                    this.ui.setTranscript(message.text);
+                    this.ui.showConfirmation(message.text, message.value);
                     this.ui.showPlaybackState();
                     await this.audioHandler.playAudio(message.audio, message.text);
                     this.ui.hidePlaybackState();
                     this.ui.hideProcessingState();
+                    // Show record button for voice confirmation
+                    this.ui.showRecordButton();
                     break;
 
                 case 'fill_field':
@@ -895,11 +916,13 @@
                         this.ui.hidePlaybackState();
                     }
                     if (message.nextField) {
-                        this.formAnalyzer.highlightField(message.nextField.id);
-                        // Update the current field label to show the next field
+                        // Update current field to next field
                         this.ui.setCurrentField(message.nextField.label, message.nextField.id);
+                        this.formAnalyzer.highlightField(message.nextField.id);
                     }
                     this.ui.hideProcessingState();
+                    // Show record button for next field
+                    this.ui.showRecordButton();
                     break;
 
                 case 'validation_error':
@@ -912,33 +935,31 @@
                     await this.audioHandler.playAudio(message.audio, message.text);
                     this.ui.hidePlaybackState();
                     this.ui.hideProcessingState();
+                    // Show record button to re-enter value
+                    this.ui.showRecordButton();
                     break;
 
                 case 'repeat':
                 case 'clarify':
                     this.ui.setStatus('Please repeat');
                     this.ui.setTranscript(message.text);
-                    // Keep current field label visible during repeat/clarify
-                    if (message.fieldLabel || message.fieldId) {
-                        this.ui.setCurrentField(message.fieldLabel || message.fieldId, message.fieldId);
-                    }
                     this.ui.showPlaybackState();
                     await this.audioHandler.playAudio(message.audio, message.text);
                     this.ui.hidePlaybackState();
                     this.ui.hideProcessingState();
+                    // Show record button to repeat
+                    this.ui.showRecordButton();
                     break;
 
                 case 'audio_quality_error':
                     this.ui.setStatus('Speak louder', 'error');
                     this.ui.setTranscript(message.text);
-                    // Keep current field label visible during audio quality errors
-                    if (message.fieldLabel || message.fieldId) {
-                        this.ui.setCurrentField(message.fieldLabel || message.fieldId, message.fieldId);
-                    }
                     this.ui.showPlaybackState();
                     await this.audioHandler.playAudio(message.audio, message.text);
                     this.ui.hidePlaybackState();
                     this.ui.hideProcessingState();
+                    // Show record button to try again
+                    this.ui.showRecordButton();
                     break;
 
                 case 'completion':
@@ -958,10 +979,6 @@
                 case 'error':
                     this.ui.showError(message.error || 'An error occurred');
                     this.ui.setTranscript(message.text);
-                    // Keep current field label visible during errors
-                    if (message.fieldLabel || message.fieldId) {
-                        this.ui.setCurrentField(message.fieldLabel || message.fieldId, message.fieldId);
-                    }
                     this.ui.showPlaybackState();
                     await this.audioHandler.playAudio(message.audio, message.text);
                     this.ui.hidePlaybackState();
@@ -996,9 +1013,9 @@
         }
 
         async startRecording() {
-            // Check if session is initialized
+            // Check if session exists
             if (!this.sessionId) {
-                this.ui.showError('Please wait for the assistant to greet you first');
+                this.ui.setStatus('Please start a session first', 'error');
                 return;
             }
 
@@ -1009,7 +1026,7 @@
             }
 
             this.isRecording = true;
-            this.ui.hideSpeakNow();
+            this.ui.hideSpeakHint();
             this.ui.showRecordingState();
             this.visualizer.start();
             this._startMicLevelMonitor();

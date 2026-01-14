@@ -129,7 +129,8 @@ class VoiceFormHandler:
             "sessionId": self.session.session_id
         })
 
-        # Ask for first field
+        # Ask for first field after greeting
+        # Note: Frontend will wait for greeting audio to finish before showing record button
         await asyncio.sleep(0.5)  # Brief pause
         await self._ask_current_field()
 
@@ -536,20 +537,11 @@ class VoiceFormHandler:
         self.session.add_to_history("assistant", repeat_text)
         await session_manager.save_session(self.session)
 
-        # Include current field info so UI can show context
-        current_field = self.session.get_current_field()
-        message = {
+        await self.send({
             "type": "repeat",
             "text": repeat_text,
             "audio": repeat_audio
-        }
-        if current_field:
-            field_id = current_field.get("id") or current_field.get("name")
-            field_label = current_field.get("label", field_id)
-            message["fieldId"] = field_id
-            message["fieldLabel"] = field_label
-
-        await self.send(message)
+        })
 
     async def _send_audio_quality_error(self) -> None:
         """Send error when audio quality is too low (no speech detected)."""
@@ -559,40 +551,22 @@ class VoiceFormHandler:
         except Exception:
             error_audio = ""
 
-        # Include current field info so UI can show context
-        current_field = self.session.get_current_field()
-        message = {
+        await self.send({
             "type": "audio_quality_error",
             "text": error_text,
             "audio": error_audio
-        }
-        if current_field:
-            field_id = current_field.get("id") or current_field.get("name")
-            field_label = current_field.get("label", field_id)
-            message["fieldId"] = field_id
-            message["fieldLabel"] = field_label
-
-        await self.send(message)
+        })
 
     async def _ask_yes_no(self) -> None:
         """Ask for clear yes/no."""
         text = "Please say yes to confirm or no to change."
         audio = await tts_service.synthesize(text)
 
-        # Include current field info so UI can show context
-        current_field = self.session.get_current_field()
-        message = {
+        await self.send({
             "type": "clarify",
             "text": text,
             "audio": audio
-        }
-        if current_field:
-            field_id = current_field.get("id") or current_field.get("name")
-            field_label = current_field.get("label", field_id)
-            message["fieldId"] = field_id
-            message["fieldLabel"] = field_label
-
-        await self.send(message)
+        })
 
     async def _complete_form(self) -> None:
         """Handle form completion."""

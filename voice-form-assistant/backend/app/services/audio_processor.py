@@ -237,13 +237,12 @@ class AudioProcessor:
         noise_samples = int(0.1 * self.target_sample_rate)  # 100ms
         if len(processed) > noise_samples:
             noise_floor = np.percentile(np.abs(processed[:noise_samples]), 10)
-            # Apply very gentle noise gate - increased multiplier from 3 to 5
-            # This makes the gate less aggressive and preserves more speech
-            noise_gate_threshold = max(noise_floor * 5, 0.0005)
+            # Apply gentle noise gate
+            noise_gate_threshold = max(noise_floor * 3, 0.001)
             processed = np.where(
                 np.abs(processed) > noise_gate_threshold,
                 processed,
-                processed * 0.3  # Reduce noise by 70% (was 90% - now less aggressive)
+                processed * 0.1  # Reduce noise by 90%
             )
             logger.debug(f"Applied noise gate (threshold: {noise_gate_threshold:.6f})")
         
@@ -251,17 +250,16 @@ class AudioProcessor:
         # Target RMS for good speech recognition (not too loud, not too quiet)
         target_rms = 0.15
         current_rms = np.sqrt(np.mean(np.square(processed)))
-
-        if current_rms > 0.0005:  # Avoid division by zero
+        
+        if current_rms > 0.001:  # Avoid division by zero
             # Calculate gain factor, but limit to avoid distortion
             gain_factor = target_rms / current_rms
-            # Increased gain limit from 10x to 20x for very quiet microphones
-            # This is especially helpful for built-in laptop mics and quiet environments
-            gain_factor = min(gain_factor, 20.0)
-            # Apply gain if audio is quiet - lowered threshold from 1.2 to 1.05
-            if gain_factor > 1.05:  # Boost even slightly quiet audio
+            # Limit gain to 10x to avoid amplifying noise too much
+            gain_factor = min(gain_factor, 10.0)
+            # Only apply gain if audio is too quiet
+            if gain_factor > 1.2:  # Only boost if significantly quiet
                 processed = processed * gain_factor
-                logger.debug(f"Applied AGC (gain: {gain_factor:.2f}x, RMS: {current_rms:.4f} -> {np.sqrt(np.mean(np.square(processed))):.4f})")
+                logger.debug(f"Applied AGC (gain: {gain_factor:.2f}x, RMS: {current_rms:.4f} -> {target_rms:.4f})")
         
         # 4. Dynamic range compression
         # Soft compression to even out volume variations
