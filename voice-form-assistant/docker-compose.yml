@@ -1,43 +1,111 @@
+# =================================================================
+# Voice Form Assistant - Docker Compose
+# =================================================================
+# Supports GPU deployment via NVIDIA Container Runtime
+# 
+# For GPU deployment:
+#   docker-compose up -d
+#
+# For CPU-only deployment:
+#   docker-compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
+# =================================================================
+
 version: '3.8'
 
 services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: voice-form-assistant
+    ports:
+      - "8000:8000"
+    environment:
+      # Server
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=false
+      
+      # STT Configuration
+      - STT_MODE=hybrid
+      - ML_DEVICE=cuda
+      
+      # IndicConformer
+      - INDIC_ASR_DECODER=ctc
+      - INDIC_DEFAULT_LANGUAGE=hi
+      
+      # Whisper
+      - WHISPER_MODEL=medium
+      - WHISPER_DEVICE=cuda
+      
+      # Language Detection
+      - LANG_DETECTION_THRESHOLD=0.6
+      - PREFER_INDIC_ASR=true
+      - FALLBACK_LANGUAGE=hi
+      
+      # OpenRouter (set via .env file)
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_MODEL=meta-llama/llama-3.1-8b-instruct
+      
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      
+      # TTS
+      - TTS_ENGINE=gtts
+      - TTS_LANGUAGE=en
+      - TTS_TLD=co.in
+      
+      # CORS
+      - ALLOWED_ORIGINS=["*"]
+      
+      # Logging
+      - LOG_LEVEL=INFO
+      
+      # Model Cache
+      - MODEL_CACHE_DIR=/root/.cache/voice-form-assistant
+    
+    volumes:
+      # Persist model cache between restarts
+      - model-cache:/root/.cache/voice-form-assistant
+    
+    depends_on:
+      - redis
+    
+    restart: unless-stopped
+    
+    # GPU Support - requires NVIDIA Container Runtime
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # Models take time to load
+
   redis:
     image: redis:7-alpine
-    container_name: voice-assistant-redis
+    container_name: voice-form-redis
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
+      - redis-data:/data
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-    restart: unless-stopped
-
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: voice-assistant-backend
-    ports:
-      - "8000:8000"
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-    env_file:
-      - ./backend/.env
-    depends_on:
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./backend:/app
-      - whisper_models:/root/.cache/whisper
-    restart: unless-stopped
 
 volumes:
-  redis_data:
+  model-cache:
     driver: local
-  whisper_models:
+  redis-data:
     driver: local
