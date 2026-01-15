@@ -1,6 +1,11 @@
 """
 Voice Form Assistant - FastAPI Application.
 Main entry point for the backend server.
+
+Supports:
+- Hybrid STT: IndicConformer (22 Indian languages) + Whisper (English)
+- Automatic language detection via SpeechBrain VoxLingua107
+- GPU acceleration for AWS EC2 deployment
 """
 
 import logging
@@ -16,7 +21,7 @@ from fastapi.responses import JSONResponse
 from .config import settings
 from .api.http import router as http_router
 from .api.websocket import websocket_endpoint
-from .services.whisper_service import whisper_service
+from .services.hybrid_stt_service import hybrid_stt_service
 from .services.session_manager import session_manager
 
 # Configure logging
@@ -36,6 +41,8 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     logger.info("Starting Voice Form Assistant...")
+    logger.info(f"ML Device: {settings.effective_device}")
+    logger.info(f"STT Mode: {settings.STT_MODE}")
 
     # Connect to Redis
     try:
@@ -44,14 +51,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Redis connection failed: {e}. Sessions will not persist.")
 
-    # Optionally preload Whisper model
+    # Preload STT models (hybrid: IndicConformer + Whisper + Language Detection)
     if not settings.DEBUG:
         try:
-            logger.info("Loading Whisper model...")
-            await whisper_service.load_model()
-            logger.info("Whisper model loaded")
+            logger.info("Loading hybrid STT models (IndicConformer + Whisper + Language Detection)...")
+            await hybrid_stt_service.load_models()
+            logger.info("All STT models loaded successfully")
+            
+            # Log model info
+            model_info = hybrid_stt_service.get_model_info()
+            logger.info(f"Language Detection: {model_info['language_detector']['model_name']}")
+            logger.info(f"Indic ASR: {model_info['indic_asr']['model_type']}")
+            logger.info(f"English ASR: Whisper {model_info['whisper']['model_name']}")
+            
         except Exception as e:
-            logger.warning(f"Failed to preload Whisper model: {e}")
+            logger.warning(f"Failed to preload STT models: {e}")
+            logger.warning("Models will be loaded on first request (may cause delay)")
 
     logger.info(f"Server ready on {settings.HOST}:{settings.PORT}")
 
@@ -66,8 +81,16 @@ async def lifespan(app: FastAPI):
 # Create FastAPI application
 app = FastAPI(
     title="Voice Form Assistant",
-    description="Voice-based form filling assistant for Indian government portals",
-    version="1.0.0",
+    description="""Voice-based form filling assistant for Indian government portals.
+
+Supports 22 Indian languages via IndicConformer + English via Whisper with automatic language detection.
+
+**Supported Languages:**
+- All 22 scheduled Indian languages (Hindi, Tamil, Telugu, Bengali, Marathi, etc.)
+- English
+- Automatic language detection and routing
+""",
+    version="2.0.0",
     lifespan=lifespan
 )
 

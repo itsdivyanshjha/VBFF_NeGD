@@ -1,6 +1,7 @@
 """
 Whisper Speech-to-Text Service.
 Uses the official OpenAI Whisper package for transcription.
+Used as the English ASR engine and fallback in the hybrid STT system.
 """
 
 import logging
@@ -20,7 +21,8 @@ class WhisperService:
     def __init__(self):
         self.model: Optional[whisper.Whisper] = None
         self._model_name = settings.WHISPER_MODEL
-        self._device = settings.WHISPER_DEVICE
+        # Use effective device from config (auto-detect GPU)
+        self._device = settings.WHISPER_DEVICE if settings.WHISPER_DEVICE != "auto" else settings.effective_device
         self._lock = asyncio.Lock()
 
     async def load_model(self) -> None:
@@ -201,7 +203,8 @@ class WhisperService:
         return {
             "model_name": self._model_name,
             "device": self._device,
-            "loaded": self.model is not None
+            "loaded": self.model is not None,
+            "engine": "whisper"
         }
 
 

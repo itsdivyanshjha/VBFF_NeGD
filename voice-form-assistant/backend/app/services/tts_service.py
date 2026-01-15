@@ -87,6 +87,37 @@ class TTSService:
             "tld": self.tld
         }
 
+    async def get_available_voices(self, language: str = None) -> list:
+        """
+        Get available TTS voices.
+        gTTS doesn't have voice selection, but we list supported languages.
+        
+        Args:
+            language: Optional language filter
+            
+        Returns:
+            List of available voice/language options
+        """
+        # gTTS supported languages for Indian context
+        voices = [
+            {"language": "en", "name": "English (Indian)", "tld": "co.in"},
+            {"language": "hi", "name": "Hindi", "tld": "com"},
+            {"language": "bn", "name": "Bengali", "tld": "com"},
+            {"language": "ta", "name": "Tamil", "tld": "com"},
+            {"language": "te", "name": "Telugu", "tld": "com"},
+            {"language": "mr", "name": "Marathi", "tld": "com"},
+            {"language": "gu", "name": "Gujarati", "tld": "com"},
+            {"language": "kn", "name": "Kannada", "tld": "com"},
+            {"language": "ml", "name": "Malayalam", "tld": "com"},
+            {"language": "pa", "name": "Punjabi", "tld": "com"},
+            {"language": "ur", "name": "Urdu", "tld": "com"},
+        ]
+        
+        if language:
+            voices = [v for v in voices if v["language"] == language]
+        
+        return voices
+
 
 # Global instance
 tts_service = TTSService()

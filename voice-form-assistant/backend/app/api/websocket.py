@@ -1,6 +1,7 @@
 """
 WebSocket Handler.
 Main communication endpoint for voice form filling.
+Supports multilingual input via hybrid STT (IndicConformer + Whisper).
 """
 
 import logging
@@ -10,7 +11,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 import asyncio
 import numpy as np
 
-from ..services.whisper_service import whisper_service
+from ..services.hybrid_stt_service import hybrid_stt_service, TranscriptionResult
 from ..services.openrouter_client import openrouter_client
 from ..services.tts_service import tts_service
 from ..services.audio_processor import audio_processor
@@ -138,6 +139,7 @@ class VoiceFormHandler:
         """Handle complete audio recording from client."""
         session_id = data.get("sessionId")
         audio_data = data.get("audio", "")
+        language_hint = data.get("languageHint")  # Optional language hint from client
 
         if not session_id or not audio_data:
             await self._send_error("Missing session or audio data")
@@ -174,16 +176,24 @@ class VoiceFormHandler:
                 await self._ask_repeat()
                 return
 
-            detected_lang = await whisper_service.detect_language(audio_array)
-            logger.info(f"Detected language: {detected_lang}")
+            # Use hybrid STT service for automatic language detection and routing
+            # This handles both Indian languages (IndicConformer) and English (Whisper)
+            result: TranscriptionResult = await hybrid_stt_service.transcribe(
+                audio_array,
+                language_hint=language_hint,
+                sample_rate=settings.AUDIO_SAMPLE_RATE
+            )
 
-            cfg_lang = (settings.WHISPER_LANGUAGE or "auto").strip().lower()
-            if cfg_lang in {"auto", "detect", "none", ""}:
-                lang_for_transcribe = detected_lang
-            else:
-                lang_for_transcribe = cfg_lang
+            transcription = result.text
+            confidence = result.confidence
+            detected_lang = result.language
+            engine_used = result.engine_used
 
-            transcription, confidence = await whisper_service.transcribe(audio_array, language=lang_for_transcribe)
+            logger.info(
+                f"Transcription [{engine_used}]: '{transcription}' "
+                f"(confidence: {confidence:.2f}, lang: {detected_lang}, "
+                f"is_indic: {result.is_indic})"
+            )
 
             # Very low confidence threshold (0.1) to accept more transcriptions
             # This is especially important for accented speech (Indian English, Hindi, Hinglish)
@@ -193,10 +203,14 @@ class VoiceFormHandler:
                 await self._ask_repeat()
                 return
 
-            logger.info(f"Transcription: '{transcription}' (confidence: {confidence})")
-
-            # Record user input
+            # Record user input with language metadata
             self.session.add_to_history("user", transcription)
+            
+            # Store detected language in session for potential use in response generation
+            if not hasattr(self.session, 'detected_language'):
+                self.session.detected_language = detected_lang
+            else:
+                self.session.detected_language = detected_lang
 
             # Process based on session state
             if self.session.state == "confirming":
