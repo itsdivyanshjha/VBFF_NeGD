@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ..config import settings
-from ..services.hybrid_stt_service import hybrid_stt_service
+from ..services.assemblyai_service import assemblyai_service, SUPPORTED_LANGUAGES
 from ..services.openrouter_client import openrouter_client
 from ..services.tts_service import tts_service
 from ..services.session_manager import session_manager
@@ -48,19 +48,18 @@ class LanguagesResponse(BaseModel):
 async def health_check() -> HealthResponse:
     """
     Health check endpoint.
-    Returns status of all services including hybrid STT.
+    Returns status of all services including AssemblyAI STT.
     """
-    # Get hybrid STT service info
-    stt_info = hybrid_stt_service.get_model_info()
+    # Get AssemblyAI service info
+    stt_info = assemblyai_service.get_model_info()
     
     services_status = {
         "stt": {
-            "mode": settings.STT_MODE,
-            "device": settings.effective_device,
-            "loaded": stt_info["hybrid_service"]["loaded"],
-            "language_detector": stt_info["language_detector"],
-            "indic_asr": stt_info["indic_asr"],
-            "whisper": stt_info["whisper"]
+            "service": stt_info["service"],
+            "engine": stt_info["engine"],
+            "configured": stt_info["configured"],
+            "supported_languages": stt_info["supported_languages"],
+            "language_detection": stt_info["language_detection"]
         },
         "openrouter": openrouter_client.get_model_info(),
         "tts": tts_service.get_service_info(),
@@ -93,30 +92,32 @@ async def get_info() -> InfoResponse:
     Get service information.
     Returns details about the API, configuration, and supported languages.
     """
-    languages = hybrid_stt_service.get_supported_languages()
+    # Build languages dict
+    languages = {
+        "total_count": len(SUPPORTED_LANGUAGES),
+        "languages": SUPPORTED_LANGUAGES,
+        "codes": list(SUPPORTED_LANGUAGES.keys())
+    }
     
     return InfoResponse(
         name="Voice Form Assistant",
         version="2.0.0",
         description="Voice-based form filling assistant for Indian government portals. "
-                    "Supports 22 Indian languages via IndicConformer + English via Whisper.",
+                    "Cloud-based transcription via AssemblyAI with automatic language detection.",
         endpoints={
             "websocket": "/ws",
             "health": "/health",
             "info": "/info",
             "languages": "/languages",
             "ready": "/ready",
-            "warmup": "/warmup",
             "static": "/static/*"
         },
         configuration={
-            "stt_mode": settings.STT_MODE,
-            "ml_device": settings.effective_device,
-            "indic_decoder": settings.INDIC_ASR_DECODER,
-            "whisper_model": settings.WHISPER_MODEL,
+            "stt_service": "AssemblyAI",
+            "assemblyai_configured": bool(settings.ASSEMBLYAI_API_KEY),
+            "default_language": settings.DEFAULT_LANGUAGE,
             "openrouter_model": settings.OPENROUTER_MODEL,
             "tts_engine": settings.TTS_ENGINE,
-            "lang_detection_threshold": settings.LANG_DETECTION_THRESHOLD,
             "debug": settings.DEBUG
         },
         supported_languages=languages
@@ -127,15 +128,17 @@ async def get_info() -> InfoResponse:
 async def get_languages() -> LanguagesResponse:
     """
     Get detailed information about supported languages.
-    Returns all languages supported by the hybrid STT system.
+    Returns all languages supported by AssemblyAI for this MVP.
     """
-    languages = hybrid_stt_service.get_supported_languages()
+    # Separate Indic and English languages
+    indic_langs = {k: v for k, v in SUPPORTED_LANGUAGES.items() if k != "en"}
+    english = {"en": SUPPORTED_LANGUAGES["en"]}
     
     return LanguagesResponse(
-        total_count=languages["total_count"],
-        indic_languages=languages["indic"],
-        english=languages["english"],
-        engines=languages["engines"]
+        total_count=len(SUPPORTED_LANGUAGES),
+        indic_languages=indic_langs,
+        english=english,
+        engines={"assemblyai": list(SUPPORTED_LANGUAGES.keys())}
     )
 
 
@@ -145,13 +148,10 @@ async def readiness_check() -> Dict[str, Any]:
     Readiness check endpoint.
     Returns whether the service is ready to accept requests.
     """
-    stt_info = hybrid_stt_service.get_model_info()
+    stt_info = assemblyai_service.get_model_info()
     
     checks = {
-        "stt_loaded": stt_info["hybrid_service"]["loaded"],
-        "language_detector_loaded": stt_info["language_detector"]["loaded"],
-        "indic_asr_loaded": stt_info["indic_asr"]["loaded"],
-        "whisper_loaded": stt_info["whisper"]["loaded"],
+        "assemblyai_configured": stt_info["configured"],
         "openrouter_configured": bool(settings.OPENROUTER_API_KEY),
         "redis_connected": False
     }
@@ -162,9 +162,8 @@ async def readiness_check() -> Dict[str, Any]:
     except Exception:
         pass
 
-    # For readiness, we need at least one STT engine loaded
-    stt_ready = checks["indic_asr_loaded"] or checks["whisper_loaded"]
-    is_ready = stt_ready and checks["openrouter_configured"]
+    # For readiness, we need AssemblyAI and OpenRouter configured
+    is_ready = checks["assemblyai_configured"] and checks["openrouter_configured"]
 
     if not is_ready:
         raise HTTPException(
@@ -175,28 +174,17 @@ async def readiness_check() -> Dict[str, Any]:
     return {"ready": True, "checks": checks}
 
 
-@router.post("/warmup")
+@router.get("/warmup")
 async def warmup_services() -> Dict[str, str]:
     """
-    Warm up services by loading all models.
-    Call this on startup to ensure fast first response.
-    
-    Loads:
-    - Language Detection model (SpeechBrain VoxLingua107)
-    - IndicConformer model (22 Indian languages)
-    - Whisper model (English)
+    Warm up services - mainly for testing connections.
+    AssemblyAI is cloud-based so no model loading needed.
     """
     results = {}
 
-    # Load hybrid STT models (includes all three)
-    try:
-        await hybrid_stt_service.load_models()
-        results["stt"] = "loaded"
-        results["language_detector"] = "loaded"
-        results["indic_asr"] = "loaded"
-        results["whisper"] = "loaded"
-    except Exception as e:
-        results["stt"] = f"error: {str(e)}"
+    # Check AssemblyAI configuration
+    stt_info = assemblyai_service.get_model_info()
+    results["assemblyai"] = "configured" if stt_info["configured"] else "not configured"
 
     # Test Redis connection
     try:
@@ -228,29 +216,19 @@ async def list_voices(language: str = None) -> Dict[str, Any]:
     }
 
 
-@router.get("/device")
-async def get_device_info() -> Dict[str, Any]:
+@router.get("/service-info")
+async def get_service_info() -> Dict[str, Any]:
     """
-    Get information about the ML device (CPU/GPU).
-    Useful for verifying GPU acceleration is working.
+    Get information about the STT service.
+    AssemblyAI is cloud-based, so no local device info needed.
     """
-    import torch
+    stt_info = assemblyai_service.get_model_info()
     
-    device_info = {
-        "configured_device": settings.ML_DEVICE,
-        "effective_device": settings.effective_device,
-        "cuda_available": torch.cuda.is_available(),
-        "cuda_device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
+    return {
+        "stt_service": stt_info["service"],
+        "engine": stt_info["engine"],
+        "configured": stt_info["configured"],
+        "supported_languages": stt_info["languages"],
+        "language_detection": stt_info["language_detection"],
+        "deployment": "cloud-based (no local models)"
     }
-    
-    if torch.cuda.is_available():
-        device_info["cuda_devices"] = [
-            {
-                "index": i,
-                "name": torch.cuda.get_device_name(i),
-                "memory_total_gb": round(torch.cuda.get_device_properties(i).total_memory / 1e9, 2),
-            }
-            for i in range(torch.cuda.device_count())
-        ]
-    
-    return device_info

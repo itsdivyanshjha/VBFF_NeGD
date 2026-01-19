@@ -1,14 +1,11 @@
 # =================================================================
 # Voice Form Assistant - Dockerfile
 # =================================================================
-# Supports both CPU and GPU deployments
-# For GPU: Use NVIDIA Container Runtime
+# Lightweight deployment using AssemblyAI cloud API
+# No GPU/CUDA dependencies required
 # =================================================================
 
-# Use NVIDIA CUDA base image for GPU support
-# For CPU-only: Change to python:3.10-slim
-ARG BASE_IMAGE=nvidia/cuda:12.1.0-runtime-ubuntu22.04
-FROM ${BASE_IMAGE}
+FROM python:3.11-slim
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -18,59 +15,42 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
-# Install system dependencies
+# Install system dependencies (minimal set)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.10 \
-    python3.10-venv \
-    python3-pip \
     ffmpeg \
     libsndfile1 \
-    git \
-    wget \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Python 3.10 as default
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
-RUN update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
-
 # Create app directory
 WORKDIR /app
-
-# Create model cache directory
-RUN mkdir -p /root/.cache/voice-form-assistant
 
 # Copy requirements first for better caching
 COPY requirements.txt .
 
 # Install Python dependencies
-# For GPU deployment with CUDA 12.1
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
-RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cu121
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app/ ./app/
 
-# Create non-root user for security (optional, comment out if causing issues)
-# RUN useradd -m -u 1000 appuser
-# RUN chown -R appuser:appuser /app /root/.cache/voice-form-assistant
-# USER appuser
+# Create non-root user for security
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+USER appuser
 
 # Expose port
 EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Default environment variables
 ENV HOST=0.0.0.0
 ENV PORT=8000
 ENV DEBUG=false
-ENV STT_MODE=hybrid
-ENV ML_DEVICE=cuda
-ENV MODEL_CACHE_DIR=/root/.cache/voice-form-assistant
 
 # Run the application
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

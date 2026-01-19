@@ -11,7 +11,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 import asyncio
 import numpy as np
 
-from ..services.hybrid_stt_service import hybrid_stt_service, TranscriptionResult
+from ..services.assemblyai_service import assemblyai_service, TranscriptionResult
 from ..services.openrouter_client import openrouter_client
 from ..services.tts_service import tts_service
 from ..services.audio_processor import audio_processor
@@ -158,30 +158,21 @@ class VoiceFormHandler:
         self._processing = True
 
         try:
-            # Decode the complete audio
-            audio_array = await audio_processor.decode_audio_chunks(
-                [audio_data],  # Single complete audio
-                format="webm"
-            )
-
-            if len(audio_array) == 0:
+            # Decode base64 audio to raw bytes
+            import base64
+            audio_bytes = base64.b64decode(audio_data)
+            
+            logger.info(f"Received {len(audio_bytes)} bytes of audio")
+            
+            if len(audio_bytes) < 1000:  # Too small
                 await self._send_audio_quality_error()
                 return
 
-            # Check duration
-            duration = await audio_processor.get_audio_duration(audio_array)
-            logger.info(f"Audio duration: {duration:.2f}s")
-
-            if duration < 0.5:
-                await self._ask_repeat()
-                return
-
-            # Use hybrid STT service for automatic language detection and routing
-            # This handles both Indian languages (IndicConformer) and English (Whisper)
-            result: TranscriptionResult = await hybrid_stt_service.transcribe(
-                audio_array,
-                language_hint=language_hint,
-                sample_rate=settings.AUDIO_SAMPLE_RATE
+            # Send RAW WebM directly to AssemblyAI (no conversion/degradation)
+            # This preserves the original quality from the browser
+            result: TranscriptionResult = await assemblyai_service.transcribe_raw(
+                audio_bytes,
+                language_hint=language_hint
             )
 
             transcription = result.text

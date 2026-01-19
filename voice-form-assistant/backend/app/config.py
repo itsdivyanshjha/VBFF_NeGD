@@ -24,75 +24,34 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # =================================================================
-    # STT Configuration - Hybrid System
+    # AssemblyAI Configuration (Cloud-based STT)
     # =================================================================
     
-    # STT Mode: "hybrid" (auto language detection), "indic" (force IndicConformer), 
-    #           "whisper" (force Whisper), "auto" (same as hybrid)
-    STT_MODE: str = "hybrid"
+    # AssemblyAI API key for authentication
+    ASSEMBLYAI_API_KEY: str = Field(default="", description="AssemblyAI API key")
     
-    # Device for ML models (auto-detected if not specified)
-    # Options: "auto", "cpu", "cuda", "cuda:0", "cuda:1", etc.
-    ML_DEVICE: str = "auto"
+    # AssemblyAI API base URL
+    ASSEMBLYAI_BASE_URL: str = "https://api.assemblyai.com/v2"
     
-    # Model cache directory for downloaded models
-    MODEL_CACHE_DIR: str = Field(
-        default_factory=lambda: os.path.expanduser("~/.cache/voice-form-assistant")
-    )
+    # Request timeout in seconds
+    ASSEMBLYAI_TIMEOUT: int = 60
+    
+    # Polling interval for transcript status (seconds)
+    ASSEMBLYAI_POLLING_INTERVAL: float = 0.5
+    
+    # Maximum retries for failed requests
+    ASSEMBLYAI_MAX_RETRIES: int = 3
 
     # =================================================================
-    # IndicConformer Configuration (Indian Languages ASR)
+    # Language Support Configuration
     # =================================================================
     
-    # Decoder mode: "ctc" (faster) or "rnnt" (more accurate)
-    INDIC_ASR_DECODER: str = "ctc"
+    # Supported languages for MVP (ISO 639-1 codes)
+    # Hindi, Bengali, Tamil, Telugu, Marathi, English
+    SUPPORTED_LANGUAGES: List[str] = ["hi", "bn", "ta", "te", "mr", "en"]
     
-    # Default language for IndicConformer when detection is uncertain
-    INDIC_DEFAULT_LANGUAGE: str = "hi"
-
-    # =================================================================
-    # Whisper Configuration (English ASR + Fallback)
-    # =================================================================
-    
-    # Whisper model size: tiny, base, small, medium, large, large-v2, large-v3
-    # For GPU: medium or large recommended
-    # For CPU: tiny or base recommended
-    WHISPER_MODEL: str = "base"
-    
-    # Whisper device (overridden by ML_DEVICE if set to "auto")
-    WHISPER_DEVICE: str = "auto"
-    
-    # Force Whisper to specific language (None = auto-detect)
-    # Use "en" for English-only, "auto" for auto-detection
-    WHISPER_LANGUAGE: str = "auto"
-
-    # =================================================================
-    # Language Detection Configuration
-    # =================================================================
-    
-    # Confidence threshold for language detection (0.0 - 1.0)
-    # Below this threshold, hybrid transcription is used
-    LANG_DETECTION_THRESHOLD: float = 0.6
-    
-    # Prefer IndicConformer for uncertain languages (if True)
-    PREFER_INDIC_ASR: bool = True
-    
-    # Fallback language when detection fails completely
-    FALLBACK_LANGUAGE: str = "hi"
-
-    # =================================================================
-    # Supported Languages Configuration
-    # =================================================================
-    
-    # Languages to enable (comma-separated ISO codes)
-    # Empty = all supported languages
-    # Example: "hi,en,ta,te,bn" for Hindi, English, Tamil, Telugu, Bengali
-    ENABLED_LANGUAGES: str = ""
-    
-    # Form language (language for form field values/output)
-    # "source" = same as detected speech language
-    # Or specific code like "en", "hi"
-    FORM_OUTPUT_LANGUAGE: str = "source"
+    # Default language when detection fails
+    DEFAULT_LANGUAGE: str = "hi"
 
     # =================================================================
     # OpenRouter Configuration (LLM for value extraction)
@@ -161,23 +120,6 @@ class Settings(BaseSettings):
         except json.JSONDecodeError:
             return ["*"]
 
-    @property
-    def enabled_languages_list(self) -> List[str]:
-        """Parse ENABLED_LANGUAGES to list."""
-        if not self.ENABLED_LANGUAGES:
-            return []
-        return [lang.strip() for lang in self.ENABLED_LANGUAGES.split(",")]
-
-    @property
-    def effective_device(self) -> str:
-        """Get the effective ML device (auto-detect if needed)."""
-        if self.ML_DEVICE == "auto":
-            try:
-                import torch
-                return "cuda" if torch.cuda.is_available() else "cpu"
-            except ImportError:
-                return "cpu"
-        return self.ML_DEVICE
 
     class Config:
         env_file = ".env"
@@ -187,6 +129,3 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
-
-# Create model cache directory if it doesn't exist
-os.makedirs(settings.MODEL_CACHE_DIR, exist_ok=True)

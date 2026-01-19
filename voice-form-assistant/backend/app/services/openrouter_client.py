@@ -114,51 +114,91 @@ class OpenRouterClient:
         Returns:
             Dict with: value, confidence, needs_confirmation, reasoning
         """
-        system_prompt = """You are a form-filling assistant. Extract the value the user spoke for the requested field.
+        system_prompt = """You are a form-filling assistant. Extract the value the user spoke and FORMAT it according to the field's requirements.
 
-UNIVERSAL RULES:
-1. Extract LITERALLY what was said - do not interpret or make assumptions
-2. When digits are spoken with spaces between them (e.g., "9 8 1 0"), remove ALL spaces
-3. For ANY field containing "at" or "dot", these are email/web patterns - handle accordingly
-4. Maintain the EXACT order and content the user provided
+CRITICAL RULES:
+1. READ the field constraints below carefully
+2. Extract what the user said
+3. FORMAT it to match the required pattern/format
+4. If constraints specify a format (like YYYY-MM-DD), you MUST output in that exact format
 
-DIGIT HANDLING (applies to ANY numeric field):
-- "1 2 3 4 5 6 7 8 9 0 1 2" → "123456789012"
-- "nine eight one zero seven" → "9810" (convert words, remove spaces)
+GENERAL PROCESSING:
+- Remove filler words ("um", "uh", "like")
+- Convert spoken numbers to digits: "nine eight one zero" → "9810"
+- Remove spaces between digits: "1 2 3 4" → "1234"
+- For emails: "at" → "@", "dot" → "."
+- For names: Title case → "divyansh jha" → "Divyansh Jha"
 
-EMAIL HANDLING (applies to ANY email-like field):
-- "jha divyansh 29 at gmail dot com" → "jhadivyansh29@gmail.com"
-- "at" or "at the rate" → "@"
-- "dot" → "."
-- Remove ALL spaces from email addresses
+DATE FIELDS:
+- Look at the constraints - they will tell you the required format
+- If format is YYYY-MM-DD: "29 May 2003" → "2003-05-29"
+- If format is DD/MM/YYYY: "29 May 2003" → "29/05/2003"
+- If format is MM-DD-YYYY: "29 May 2003" → "05-29-2003"
+- Parse ANY spoken date and output in the EXACT format the field requires
 
-GENERAL TEXT (applies to ANY text field):
-- Capitalize names properly
-- Preserve special characters mentioned (underscore, dash, etc.)
-- Remove filler words like "um", "uh"
+NUMERIC FIELDS:
+- Look at pattern/maxLength to know expected digit count
+- Remove ALL spaces: "1234 5678 9012" → "123456789012"
+- Match exact length required
+
+The field details below will tell you EXACTLY what format is needed!
 
 Respond with JSON:
 {
-    "value": "extracted value or null",
+    "value": "extracted value in correct format or null",
     "confidence": 0.0 to 1.0,
     "needs_confirmation": true/false,
     "reasoning": "brief explanation"
 }"""
 
+        # Build constraints from HTML field attributes
         field_constraints = []
+        field_type = field_info.get('field_type', '').lower()
+        html_type = field_info.get('type', 'text').lower()
+        
         if field_info.get('required'):
-            field_constraints.append("This field is required")
+            field_constraints.append("Required field")
+        
+        # Extract format requirements from HTML attributes
+        if html_type == 'date':
+            field_constraints.append("OUTPUT FORMAT: YYYY-MM-DD (example: 2003-05-29)")
+            field_constraints.append("Parse any spoken date and convert to this format")
+        
         if field_info.get('pattern'):
-            field_constraints.append(f"Must match pattern: {field_info.get('pattern')}")
+            pattern = field_info.get('pattern')
+            field_constraints.append(f"Must match regex: {pattern}")
+            
+            # Interpret common patterns
+            if '\\d{12}' in pattern or r'\d{12}' in pattern:
+                field_constraints.append("OUTPUT FORMAT: Exactly 12 digits, no spaces")
+            elif '\\d{10}' in pattern or r'\d{10}' in pattern:
+                field_constraints.append("OUTPUT FORMAT: Exactly 10 digits, no spaces")
+            elif '\\d{6}' in pattern or r'\d{6}' in pattern:
+                field_constraints.append("OUTPUT FORMAT: Exactly 6 digits, no spaces")
+            elif '[6-9]\\d{9}' in pattern:
+                field_constraints.append("OUTPUT FORMAT: 10 digits starting with 6, 7, 8, or 9")
+        
         if field_info.get('maxLength'):
-            field_constraints.append(f"Maximum {field_info.get('maxLength')} characters")
+            max_len = field_info.get('maxLength')
+            field_constraints.append(f"Maximum length: {max_len} characters")
+            
+            # Infer format from maxLength for common cases
+            if max_len == 12 and not any('12' in str(c) for c in field_constraints):
+                field_constraints.append("OUTPUT FORMAT: 12 characters (likely Aadhaar)")
+            elif max_len == 10 and html_type == 'tel':
+                field_constraints.append("OUTPUT FORMAT: 10 digits (mobile number)")
         
         constraints_str = "\n".join(f"- {c}" for c in field_constraints) if field_constraints else "No specific constraints"
 
         field_description = f"""
-Field: {field_info.get('label', field_info.get('name', 'Unknown'))}
-Type: {field_info.get('type', 'text')}
+Field Name: {field_info.get('label', field_info.get('name', 'Unknown'))}
+HTML Type: {html_type}
+Detected Type: {field_type}
+
+CONSTRAINTS FROM HTML:
 {constraints_str}
+
+IMPORTANT: Output must match the format specified above!
 """
 
         if field_info.get('options'):

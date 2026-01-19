@@ -1,13 +1,10 @@
 # =================================================================
 # Voice Form Assistant - Docker Compose
 # =================================================================
-# Supports GPU deployment via NVIDIA Container Runtime
+# Cloud-based STT via AssemblyAI (no GPU required)
 # 
-# For GPU deployment:
+# Usage:
 #   docker-compose up -d
-#
-# For CPU-only deployment:
-#   docker-compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
 # =================================================================
 
 version: '3.8'
@@ -26,22 +23,14 @@ services:
       - PORT=8000
       - DEBUG=false
       
-      # STT Configuration
-      - STT_MODE=hybrid
-      - ML_DEVICE=cuda
+      # AssemblyAI Configuration (set via .env file)
+      - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
+      - ASSEMBLYAI_TIMEOUT=60
+      - ASSEMBLYAI_POLLING_INTERVAL=0.5
+      - ASSEMBLYAI_MAX_RETRIES=3
       
-      # IndicConformer
-      - INDIC_ASR_DECODER=ctc
-      - INDIC_DEFAULT_LANGUAGE=hi
-      
-      # Whisper
-      - WHISPER_MODEL=medium
-      - WHISPER_DEVICE=cuda
-      
-      # Language Detection
-      - LANG_DETECTION_THRESHOLD=0.6
-      - PREFER_INDIC_ASR=true
-      - FALLBACK_LANGUAGE=hi
+      # Language Support
+      - DEFAULT_LANGUAGE=hi
       
       # OpenRouter (set via .env file)
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
@@ -61,34 +50,18 @@ services:
       
       # Logging
       - LOG_LEVEL=INFO
-      
-      # Model Cache
-      - MODEL_CACHE_DIR=/root/.cache/voice-form-assistant
-    
-    volumes:
-      # Persist model cache between restarts
-      - model-cache:/root/.cache/voice-form-assistant
     
     depends_on:
       - redis
     
     restart: unless-stopped
     
-    # GPU Support - requires NVIDIA Container Runtime
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s  # Models take time to load
+      start_period: 20s
 
   redis:
     image: redis:7-alpine
@@ -105,7 +78,5 @@ services:
       retries: 5
 
 volumes:
-  model-cache:
-    driver: local
   redis-data:
     driver: local

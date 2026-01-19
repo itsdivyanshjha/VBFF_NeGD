@@ -300,7 +300,8 @@
                 console.log('[VoiceAssistant] Using audio format:', mimeType);
 
                 this.mediaRecorder = new MediaRecorder(this.stream, {
-                    mimeType: mimeType
+                    mimeType: mimeType,
+                    audioBitsPerSecond: 128000  // 128kbps for better quality
                 });
                 this.mediaRecorder.ondataavailable = (event) => {
                     if (event.data.size > 0) {

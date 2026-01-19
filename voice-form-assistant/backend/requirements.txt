@@ -1,5 +1,5 @@
 # Voice Form Assistant - Python Dependencies
-# Optimized for AWS EC2 g4dn.xlarge with GPU support
+# Cloud-based STT via AssemblyAI (no local models required)
 
 # =================================================================
 # Web Framework
@@ -16,41 +16,17 @@ pydantic==2.5.3
 pydantic-settings==2.1.0
 
 # =================================================================
-# PyTorch - GPU Support
-# Install CUDA version for GPU acceleration
-# For CPU-only: pip install torch torchaudio
-# For CUDA 11.8: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
-# For CUDA 12.1: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+# Speech-to-Text: AssemblyAI (Cloud API)
+# Supports 100+ languages including Hindi, Bengali, Tamil, Telugu, Marathi, English
 # =================================================================
-torch>=2.0.0
-torchaudio>=2.0.0
-
-# =================================================================
-# Speech-to-Text: IndicConformer (22 Indian Languages)
-# AI4Bharat's IndicConformer via ONNX for efficient inference
-# =================================================================
-indic-asr-onnx>=0.1.0
-onnxruntime-gpu>=1.16.0  # Use onnxruntime for CPU-only systems
-
-# =================================================================
-# Speech-to-Text: OpenAI Whisper (English + Fallback)
-# =================================================================
-openai-whisper==20231117
-
-# =================================================================
-# Language Detection: SpeechBrain VoxLingua107
-# Supports 107 languages including Indian languages and English
-# =================================================================
-speechbrain>=1.0.0
+httpx>=0.26.0
 
 # =================================================================
 # Audio Processing
 # =================================================================
 numpy>=1.24.0,<2.0.0
 scipy>=1.11.0
-soundfile>=0.12.0
 pydub>=0.25.1
-librosa>=0.10.0
 
 # =================================================================
 # Text-to-Speech: Google TTS
@@ -58,9 +34,8 @@ librosa>=0.10.0
 gTTS>=2.5.0
 
 # =================================================================
-# LLM Client (OpenRouter)
+# LLM Client (OpenRouter) & HTTP Client
 # =================================================================
-httpx>=0.26.0
 
 # =================================================================
 # Database / Session Storage

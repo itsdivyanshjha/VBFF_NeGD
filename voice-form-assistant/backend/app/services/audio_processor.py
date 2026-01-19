@@ -200,13 +200,8 @@ class AudioProcessor:
 
     def _preprocess_audio(self, audio: np.ndarray) -> np.ndarray:
         """
-        Apply audio preprocessing to improve speech recognition.
-        
-        Steps:
-        1. High-pass filter to remove low-frequency noise
-        2. Noise reduction using spectral subtraction
-        3. Auto-gain control (AGC) to normalize volume
-        4. Dynamic range compression
+        Apply minimal audio preprocessing - just normalize volume.
+        AssemblyAI works best with clean, minimally processed audio.
         
         Args:
             audio: Input audio array (float32, normalized to [-1, 1])
@@ -220,76 +215,15 @@ class AudioProcessor:
         # Make a copy to avoid modifying original
         processed = audio.copy()
         
-        # 1. High-pass filter to remove low-frequency noise (below 80Hz)
-        # This removes rumble, wind noise, etc.
-        nyquist = self.target_sample_rate / 2
-        high_pass_freq = 80.0 / nyquist  # Normalized frequency
-        if high_pass_freq < 1.0:
-            try:
-                b, a = signal.butter(4, high_pass_freq, btype='high')
-                processed = signal.filtfilt(b, a, processed)
-                logger.debug("Applied high-pass filter (80Hz cutoff)")
-            except Exception as e:
-                logger.warning(f"High-pass filter failed: {e}")
+        # Simple normalization - ensure peak is around 0.8 (leaving headroom)
+        max_val = np.max(np.abs(processed))
+        if max_val > 0.001:  # Not silence
+            target_peak = 0.8
+            normalized = processed * (target_peak / max_val)
+            logger.debug(f"Normalized audio: peak {max_val:.4f} -> {target_peak}")
+            return normalized.astype(np.float32)
         
-        # 2. Noise reduction using spectral gating
-        # Estimate noise floor from first 100ms (assuming silence at start)
-        noise_samples = int(0.1 * self.target_sample_rate)  # 100ms
-        if len(processed) > noise_samples:
-            noise_floor = np.percentile(np.abs(processed[:noise_samples]), 10)
-            # Apply gentle noise gate
-            noise_gate_threshold = max(noise_floor * 3, 0.001)
-            processed = np.where(
-                np.abs(processed) > noise_gate_threshold,
-                processed,
-                processed * 0.1  # Reduce noise by 90%
-            )
-            logger.debug(f"Applied noise gate (threshold: {noise_gate_threshold:.6f})")
-        
-        # 3. Auto-gain control (AGC) - normalize to target RMS
-        # Target RMS for good speech recognition (not too loud, not too quiet)
-        target_rms = 0.15
-        current_rms = np.sqrt(np.mean(np.square(processed)))
-        
-        if current_rms > 0.001:  # Avoid division by zero
-            # Calculate gain factor, but limit to avoid distortion
-            gain_factor = target_rms / current_rms
-            # Limit gain to 10x to avoid amplifying noise too much
-            gain_factor = min(gain_factor, 10.0)
-            # Only apply gain if audio is too quiet
-            if gain_factor > 1.2:  # Only boost if significantly quiet
-                processed = processed * gain_factor
-                logger.debug(f"Applied AGC (gain: {gain_factor:.2f}x, RMS: {current_rms:.4f} -> {target_rms:.4f})")
-        
-        # 4. Dynamic range compression
-        # Soft compression to even out volume variations
-        threshold = 0.3  # Start compressing above this level
-        ratio = 3.0  # Compression ratio
-        
-        # Apply soft-knee compression
-        abs_audio = np.abs(processed)
-        compressed = np.copy(processed)
-        
-        # Find samples above threshold
-        above_threshold = abs_audio > threshold
-        
-        if np.any(above_threshold):
-            # Calculate compression amount
-            excess = abs_audio[above_threshold] - threshold
-            compressed_amount = excess / ratio
-            new_level = threshold + compressed_amount
-            
-            # Apply compression while preserving sign
-            compressed[above_threshold] = np.sign(processed[above_threshold]) * new_level
-            logger.debug(f"Applied compression ({np.sum(above_threshold)} samples above threshold)")
-        
-        # 5. Final normalization to prevent clipping
-        max_val = np.max(np.abs(compressed))
-        if max_val > 0.95:  # Prevent clipping
-            compressed = compressed * (0.95 / max_val)
-            logger.debug(f"Normalized to prevent clipping (max was {max_val:.4f})")
-        
-        return compressed.astype(np.float32)
+        return processed.astype(np.float32)
 
 
 # Global instance

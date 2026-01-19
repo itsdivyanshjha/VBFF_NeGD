@@ -3,9 +3,9 @@ Voice Form Assistant - FastAPI Application.
 Main entry point for the backend server.
 
 Supports:
-- Hybrid STT: IndicConformer (22 Indian languages) + Whisper (English)
-- Automatic language detection via SpeechBrain VoxLingua107
-- GPU acceleration for AWS EC2 deployment
+- AssemblyAI STT: Cloud-based transcription for 100+ languages
+- Automatic language detection built-in
+- Focus on Hindi, Bengali, Tamil, Telugu, Marathi, and English
 """
 
 import logging
@@ -21,7 +21,7 @@ from fastapi.responses import JSONResponse
 from .config import settings
 from .api.http import router as http_router
 from .api.websocket import websocket_endpoint
-from .services.hybrid_stt_service import hybrid_stt_service
+from .services.assemblyai_service import assemblyai_service
 from .services.session_manager import session_manager
 
 # Configure logging
@@ -41,8 +41,15 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     logger.info("Starting Voice Form Assistant...")
-    logger.info(f"ML Device: {settings.effective_device}")
-    logger.info(f"STT Mode: {settings.STT_MODE}")
+    logger.info(f"STT Service: AssemblyAI (Cloud API)")
+    
+    # Verify AssemblyAI configuration
+    if settings.ASSEMBLYAI_API_KEY:
+        logger.info("AssemblyAI API key configured")
+        model_info = assemblyai_service.get_model_info()
+        logger.info(f"Supported languages: {', '.join(model_info['languages'])}")
+    else:
+        logger.warning("AssemblyAI API key not configured - transcription will fail")
 
     # Connect to Redis
     try:
@@ -50,23 +57,6 @@ async def lifespan(app: FastAPI):
         logger.info("Redis connection established")
     except Exception as e:
         logger.warning(f"Redis connection failed: {e}. Sessions will not persist.")
-
-    # Preload STT models (hybrid: IndicConformer + Whisper + Language Detection)
-    if not settings.DEBUG:
-        try:
-            logger.info("Loading hybrid STT models (IndicConformer + Whisper + Language Detection)...")
-            await hybrid_stt_service.load_models()
-            logger.info("All STT models loaded successfully")
-            
-            # Log model info
-            model_info = hybrid_stt_service.get_model_info()
-            logger.info(f"Language Detection: {model_info['language_detector']['model_name']}")
-            logger.info(f"Indic ASR: {model_info['indic_asr']['model_type']}")
-            logger.info(f"English ASR: Whisper {model_info['whisper']['model_name']}")
-            
-        except Exception as e:
-            logger.warning(f"Failed to preload STT models: {e}")
-            logger.warning("Models will be loaded on first request (may cause delay)")
 
     logger.info(f"Server ready on {settings.HOST}:{settings.PORT}")
 
@@ -83,12 +73,16 @@ app = FastAPI(
     title="Voice Form Assistant",
     description="""Voice-based form filling assistant for Indian government portals.
 
-Supports 22 Indian languages via IndicConformer + English via Whisper with automatic language detection.
+Cloud-based transcription via AssemblyAI with automatic language detection.
 
-**Supported Languages:**
-- All 22 scheduled Indian languages (Hindi, Tamil, Telugu, Bengali, Marathi, etc.)
-- English
-- Automatic language detection and routing
+**Supported Languages (MVP):**
+- Hindi (hi)
+- Bengali (bn)
+- Tamil (ta)
+- Telugu (te)
+- Marathi (mr)
+- English (en)
+- Automatic language detection
 """,
     version="2.0.0",
     lifespan=lifespan
