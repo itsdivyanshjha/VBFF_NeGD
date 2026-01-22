@@ -24,6 +24,8 @@ class OpenRouterClient:
         self.timeout = settings.OPENROUTER_TIMEOUT
         self.site_url = settings.OPENROUTER_SITE_URL
         self.app_name = settings.OPENROUTER_APP_NAME
+        # Cache for generated questions (avoid regenerating for same field types)
+        self._question_cache: Dict[str, str] = {}
 
     def _get_headers(self) -> Dict[str, str]:
         """Get headers for API requests."""
@@ -114,42 +116,96 @@ class OpenRouterClient:
         Returns:
             Dict with: value, confidence, needs_confirmation, reasoning
         """
-        system_prompt = """You are a form-filling assistant. Extract the value the user spoke and FORMAT it according to the field's requirements.
+        system_prompt = """You are an expert form-filling assistant specializing in natural speech interpretation. Extract the value from speech and FORMAT it precisely according to field requirements.
 
 CRITICAL RULES:
-1. READ the field constraints below carefully
-2. Extract what the user said
-3. FORMAT it to match the required pattern/format
-4. If constraints specify a format (like YYYY-MM-DD), you MUST output in that exact format
+1. READ field constraints carefully
+2. Extract what user said (handle natural speech patterns)
+3. FORMAT to match required pattern/format EXACTLY
+4. Handle mixed Hindi-English (Hinglish) gracefully
 
-GENERAL PROCESSING:
-- Remove filler words ("um", "uh", "like")
-- Convert spoken numbers to digits: "nine eight one zero" → "9810"
-- Remove spaces between digits: "1 2 3 4" → "1234"
-- For emails: "at" → "@", "dot" → "."
-- For names: Title case → "divyansh jha" → "Divyansh Jha"
+═══════════════════════════════════════════════════════════
+NATURAL SPEECH PATTERNS - HANDLE THESE!
+═══════════════════════════════════════════════════════════
+
+SPOKEN MULTIPLIERS:
+- "triple nine" / "teen nine" / "trip nine" → "999"
+- "double zero" / "dub zero" → "00"
+- "double five" → "55"
+- Pattern: "double X" = XX, "triple X" = XXX
+
+SPOKEN SYMBOLS (Email):
+- "at the rate" / "at" → "@"
+- "dot" / "period" → "."
+- "underscore" → "_"
+- "dash" / "hyphen" → "-"
+- Remove ALL spaces: "name @ gmail . com" → "name@gmail.com"
+
+ZERO VARIANTS:
+- "oh" / "o" (in context of numbers) → "0"
+- "zero" → "0"
+Example: "nine oh three" → "903"
+
+HINDI-ENGLISH MIXED:
+- "सिक्स" = "six" = "6"
+- "फाइव" = "five" = "5"
+- "जीरो" = "zero" = "0"
+- Extract digits regardless of language
+
+═══════════════════════════════════════════════════════════
+FIELD-SPECIFIC PROCESSING
+═══════════════════════════════════════════════════════════
+
+NUMERIC FIELDS (Aadhaar, Phone, PIN):
+1. Convert ALL spoken numbers to digits (English or Hindi)
+2. Handle multipliers: "triple nine" → "999"
+3. Handle variants: "oh" → "0"
+4. Remove ALL formatting: spaces, dashes, periods
+5. Match exact length from constraints
+
+Examples:
+- "nine eight one zero seven three triple nine five" → "9810739995" ✓
+- "981-073-trip-95" → Interpret as "9810739995" ✓
+- "Six, five, four, seven..." → "6547..." ✓
+- "सिक्स फाइव फॉर" → "654" ✓
 
 DATE FIELDS:
-- Look at the constraints - they will tell you the required format
-- If format is YYYY-MM-DD: "29 May 2003" → "2003-05-29"
-- If format is DD/MM/YYYY: "29 May 2003" → "29/05/2003"
-- If format is MM-DD-YYYY: "29 May 2003" → "05-29-2003"
-- Parse ANY spoken date and output in the EXACT format the field requires
+- Parse ANY natural date format
+- Output in constraint's EXACT format (usually YYYY-MM-DD)
+Examples:
+- "august 21 1998" → "1998-08-21" ✓
+- "21st august nineteen ninety eight" → "1998-08-21" ✓
+- "8/21/98" → "1998-08-21" ✓
 
-NUMERIC FIELDS:
-- Look at pattern/maxLength to know expected digit count
-- Remove ALL spaces: "1234 5678 9012" → "123456789012"
-- Match exact length required
+EMAIL FIELDS:
+- Convert ALL spoken symbols to actual symbols
+- Remove all spaces
+- Lowercase everything
+Examples:
+- "john dot smith at gmail dot com" → "john.smith@gmail.com" ✓
+- "prashant.singh25 at the rate gmail.com" → "prashant.singh25@gmail.com" ✓
 
-The field details below will tell you EXACTLY what format is needed!
+NAME FIELDS:
+- Title case each word
+- Remove trailing punctuation (commas, periods)
+- Keep middle names/initials
+Examples:
+- "deviant, ja" → "Deviant Ja" ✓
+- "RAJESH KUMAR" → "Rajesh Kumar" ✓
+
+═══════════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════════
 
 Respond with JSON:
 {
     "value": "extracted value in correct format or null",
     "confidence": 0.0 to 1.0,
     "needs_confirmation": true/false,
-    "reasoning": "brief explanation"
-}"""
+    "reasoning": "brief explanation of transformations made"
+}
+
+If you cannot extract a valid value, set "value": null and explain why in reasoning."""
 
         # Build constraints from HTML field attributes
         field_constraints = []
@@ -208,19 +264,36 @@ IMPORTANT: Output must match the format specified above!
         if context:
             validation_error = context.get('validation_error')
             if validation_error:
-                context_str += f"\n\nPREVIOUS ATTEMPT FAILED: {validation_error}\nPay attention to the constraints above."
+                context_str += f"\n\n⚠️ PREVIOUS ATTEMPT FAILED: {validation_error}"
+                context_str += "\n→ Pay special attention to length and format constraints!"
+                context_str += "\n→ Check for missed digits or incorrect symbols."
             
             filled = context.get('filled_fields', {})
             if filled and len(filled) > 0:
-                context_str += f"\n\nContext from other fields: {json.dumps(filled, indent=2)}"
+                context_str += f"\n\n📋 Context from other fields: {json.dumps(filled, indent=2)}"
+
+        # Add specific hints for common problematic fields
+        field_hints = ""
+        if field_type in ["aadhaar", "mobile", "tel", "number", "pincode"]:
+            field_hints = """
+REMINDER FOR NUMERIC FIELDS:
+- Handle "triple nine" → "999"
+- Handle "double zero" → "00"  
+- Handle "oh" → "0"
+- Convert Hindi numbers: "सिक्स" → "6"
+- Remove ALL spaces/dashes
+- Count the digits carefully to match required length!"""
 
         user_message = f"""
 {field_description}
 {context_str}
+{field_hints}
 
-User said: "{user_input}"
+═══════════════════════════════════════════════════════════
+USER INPUT: "{user_input}"
+═══════════════════════════════════════════════════════════
 
-Extract the value and respond with JSON only."""
+Extract the value, apply ALL transformations, and respond with JSON only."""
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -246,6 +319,10 @@ Extract the value and respond with JSON only."""
             result.setdefault("confidence", 0.5)
             result.setdefault("needs_confirmation", True)
             result.setdefault("reasoning", "")
+
+            # Post-process: Apply additional normalization if needed
+            if result["value"]:
+                result["value"] = self._post_process_value(result["value"], field_info)
 
             # Auto-confirm high confidence non-critical fields
             if result["confidence"] >= 0.9:
@@ -274,6 +351,142 @@ Extract the value and respond with JSON only."""
                 "reasoning": f"Error: {str(e)}"
             }
 
+    def _post_process_value(self, value: str, field_info: Dict[str, Any]) -> str:
+        """
+        Final safety net: Apply deterministic normalization rules.
+        
+        This catches cases where LLM might not perfectly normalize.
+        """
+        if not value:
+            return value
+        
+        field_type = field_info.get('field_type', '').lower()
+        html_type = field_info.get('type', 'text').lower()
+        
+        # Numeric fields: Ensure only digits
+        if field_type in ('aadhaar', 'mobile', 'pincode') or html_type in ('tel', 'number'):
+            # Strip everything except digits
+            cleaned = re.sub(r'[^\d]', '', value)
+            if cleaned:
+                return cleaned
+        
+        # Email fields: Ensure proper format
+        elif field_type == 'email' or html_type == 'email':
+            # Lowercase
+            cleaned = value.lower().strip()
+            
+            # Robust regex replacements (in case LLM missed some)
+            # "at the rate" variants
+            cleaned = re.sub(r'\s*at\s*the\s*rate\s*', '@', cleaned)
+            
+            # Standalone "at" as @
+            cleaned = re.sub(r'\s+at\s+', '@', cleaned)
+            
+            # "dot" variants
+            cleaned = re.sub(r'\s*dot\s*', '.', cleaned)
+            cleaned = re.sub(r'\s*period\s*', '.', cleaned)
+            cleaned = re.sub(r'\s*point\s*', '.', cleaned)
+            
+            # Other symbols
+            cleaned = re.sub(r'\s*underscore\s*', '_', cleaned)
+            cleaned = re.sub(r'\s*dash\s*', '-', cleaned)
+            cleaned = re.sub(r'\s*hyphen\s*', '-', cleaned)
+            
+            # Remove remaining spaces
+            cleaned = cleaned.replace(' ', '')
+            
+            return cleaned
+        
+        # Name fields: Proper title case
+        elif field_type == 'name' or 'name' in field_info.get('label', '').lower():
+            # Remove trailing punctuation
+            cleaned = value.strip().rstrip('.,;')
+            # Title case
+            return ' '.join(word.capitalize() for word in cleaned.split())
+        
+        # Default: just strip whitespace
+        return value.strip()
+    
+    async def generate_field_question(self, field: Dict[str, Any]) -> str:
+        """
+        DYNAMICALLY generate a question for any form field using LLM.
+        Works with ANY field - no hardcoding required.
+
+        Args:
+            field: Field metadata from DOM (label, type, required, pattern, maxLength, options, etc.)
+
+        Returns:
+            Natural language question to ask the user
+        """
+        # Build cache key from field characteristics
+        field_label = field.get("label", "")
+        field_type = field.get("field_type", field.get("type", "text"))
+        cache_key = f"{field_label}_{field_type}_{field.get('required', False)}"
+
+        # Check cache first
+        if cache_key in self._question_cache:
+            return self._question_cache[cache_key]
+
+        # Build field context for LLM
+        field_info = []
+        field_info.append(f"Label: {field_label}")
+        field_info.append(f"HTML Type: {field.get('type', 'text')}")
+        field_info.append(f"Detected Type: {field_type}")
+
+        if field.get("required"):
+            field_info.append("Required: Yes")
+
+        if field.get("pattern"):
+            field_info.append(f"Pattern: {field.get('pattern')}")
+
+        if field.get("maxLength"):
+            field_info.append(f"Max Length: {field.get('maxLength')}")
+
+        if field.get("placeholder"):
+            field_info.append(f"Placeholder: {field.get('placeholder')}")
+
+        if field.get("options"):
+            options_text = ", ".join([opt.get("label", opt.get("value", "")) for opt in field.get("options", [])[:5]])
+            field_info.append(f"Options: {options_text}")
+
+        prompt = f"""Generate a SHORT, NATURAL question to ask a user for this form field.
+
+FIELD INFORMATION:
+{chr(10).join(field_info)}
+
+GUIDELINES:
+- Keep it conversational and friendly
+- For numeric fields (Aadhaar, phone), instruct user to say digits in groups (e.g., "four one two three, five six seven eight")
+- For dates, say they can speak naturally (e.g., "29 May 2003")
+- For select/radio fields, mention some options if helpful
+- Keep it under 25 words
+- Don't repeat the label verbatim - make it natural
+
+Return ONLY the question text, nothing else."""
+
+        try:
+            response = await self._make_request(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3  # Low temperature for consistent questions
+            )
+
+            question = response.strip().strip('"').strip("'")
+
+            # Clean up any extra formatting
+            question = re.sub(r'^(Question:|Ask:)\s*', '', question, flags=re.IGNORECASE)
+
+            # Cache it
+            self._question_cache[cache_key] = question
+
+            logger.info(f"[generate_field_question] Generated: '{question}' for {field_type} field")
+            return question
+
+        except Exception as e:
+            logger.error(f"Failed to generate question for field, using fallback: {e}")
+            # Fallback to simple label-based question
+            clean_label = re.sub(r'\s*\([^)]*\)', '', field_label).strip()
+            return f"What is your {clean_label.lower()}?"
+
     async def generate_response(
         self,
         action: str,
@@ -289,39 +502,8 @@ Extract the value and respond with JSON only."""
         Returns:
             Generated response text
         """
-        # SPECIAL CASE: For ask_field, use predefined questions to avoid LLM confusion
-        if action == "ask_field":
-            field_type = kwargs.get("field_type", "text").lower()
-            
-            # Direct question mapping - NO LLM INVOLVED
-            questions = {
-                "name": "What is your full name?",
-                "fullname": "What is your full name?",
-                "aadhaar": "What is your 12-digit Aadhaar number?",
-                "pan": "What is your PAN number?",
-                "mobile": "What is your mobile number?",
-                "phone": "What is your phone number?",
-                "tel": "What is your phone number?",
-                "email": "What is your email address?",
-                "dob": "What is your date of birth?",
-                "date": "What is the date?",
-                "address": "What is your address?",
-                "pincode": "What is your PIN code?",
-                "zip": "What is your PIN code?",
-                "state": "Which state do you live in?",
-                "city": "Which city do you live in?"
-            }
-            
-            result = questions.get(field_type)
-            
-            if not result:
-                # Fallback: use cleaned label
-                field_label = kwargs.get("field_label", "this field")
-                clean_label = re.sub(r'\s*\([^)]*\)', '', field_label).strip().lower()
-                result = f"What is your {clean_label}?"
-            
-            logger.info(f"[ask_field] DIRECT QUESTION | Type: '{field_type}' → '{result}'")
-            return result
+        # NOTE: ask_field is now handled by generate_field_question() instead
+        # This method handles other actions like greeting, confirmation, error, etc.
         
         # For other actions, use LLM
         prompts = {

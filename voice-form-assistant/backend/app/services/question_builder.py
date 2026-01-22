@@ -85,13 +85,13 @@ def build_ask_question(field: Dict[str, Any]) -> str:
         return "What is your full name?"
 
     if ftype == "aadhaar":
-        return "What is your 12-digit Aadhaar number?"
+        return "Please say your 12-digit Aadhaar number. Speak in groups of 4 digits, like: four one two three, five six seven eight, nine zero one two."
 
     if ftype == "pan":
         return "What is your PAN number?"
 
     if ftype in ("mobile", "phone", "tel"):
-        return "What is your mobile number?"
+        return "Please say your 10-digit mobile number. You can say it as one continuous number or in groups."
 
     if ftype == "email":
         return "What is your email address?"

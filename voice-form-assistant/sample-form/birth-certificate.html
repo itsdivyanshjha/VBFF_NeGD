@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ration Card Application - Public Distribution System</title>
+    <title>Birth Certificate Registration - Municipal Corporation</title>
     <style>
         * {
             margin: 0;
@@ -13,7 +13,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: linear-gradient(135deg, #ff6f00 0%, #ff8f00 100%);
+            background: linear-gradient(135deg, #6a1b9a 0%, #8e24aa 100%);
             min-height: 100vh;
             padding: 20px;
         }
@@ -33,7 +33,7 @@
         }
 
         .header h1 {
-            color: #e65100;
+            color: #6a1b9a;
             font-size: 24px;
             margin-bottom: 5px;
         }
@@ -56,10 +56,10 @@
 
         .section-title {
             font-size: 18px;
-            color: #e65100;
+            color: #6a1b9a;
             margin-bottom: 20px;
             padding-bottom: 10px;
-            border-bottom: 2px solid #fff3e0;
+            border-bottom: 2px solid #f3e5f5;
         }
 
         .form-row {
@@ -93,6 +93,7 @@
         input[type="email"],
         input[type="tel"],
         input[type="date"],
+        input[type="time"],
         input[type="number"],
         select,
         textarea {
@@ -108,8 +109,8 @@
         select:focus,
         textarea:focus {
             outline: none;
-            border-color: #ff6f00;
-            box-shadow: 0 0 0 3px rgba(255, 111, 0, 0.1);
+            border-color: #6a1b9a;
+            box-shadow: 0 0 0 3px rgba(106, 27, 154, 0.1);
         }
 
         textarea {
@@ -140,7 +141,7 @@
         .submit-section {
             margin-top: 30px;
             padding-top: 20px;
-            border-top: 2px solid #fff3e0;
+            border-top: 2px solid #f3e5f5;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -157,13 +158,13 @@
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #ff6f00 0%, #ff8f00 100%);
+            background: linear-gradient(135deg, #6a1b9a 0%, #8e24aa 100%);
             color: white;
         }
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(255, 111, 0, 0.4);
+            box-shadow: 0 4px 15px rgba(106, 27, 154, 0.4);
         }
 
         .btn-secondary {
@@ -182,15 +183,15 @@
         }
 
         .voice-hint {
-            background: #fff3e0;
-            border-left: 4px solid #ff6f00;
+            background: #f3e5f5;
+            border-left: 4px solid #6a1b9a;
             padding: 16px;
             border-radius: 0 8px 8px 0;
             margin-bottom: 24px;
         }
 
         .voice-hint h3 {
-            color: #e65100;
+            color: #6a1b9a;
             font-size: 14px;
             margin-bottom: 8px;
         }
@@ -239,8 +240,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>Ration Card Application</h1>
-            <p>Public Distribution System - Food & Civil Supplies Department</p>
+            <h1>Birth Certificate Registration</h1>
+            <p>Municipal Corporation - Registrar of Births & Deaths</p>
         </div>
 
         <div class="form-container">
@@ -249,109 +250,41 @@
                 <p>Click the microphone button in the bottom-right corner to fill this form using your voice.</p>
                 <ul>
                     <li>Supports Hindi, Bengali, Tamil, Telugu, Marathi, and English</li>
-                    <li>Perfect for applicants who prefer speaking over typing</li>
+                    <li>Ideal for parents registering their child's birth</li>
                 </ul>
             </div>
 
-            <form id="rationCardApplication" action="#" method="POST" novalidate>
-                <!-- Card Type -->
+            <form id="birthCertificateForm" action="#" method="POST" novalidate>
+                <!-- Child Details -->
                 <div class="section">
-                    <h2 class="section-title">Ration Card Type</h2>
+                    <h2 class="section-title">Child's Details</h2>
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Category of Ration Card <span class="required">*</span></label>
-                            <div class="radio-group">
-                                <label class="radio-option">
-                                    <input type="radio" name="cardCategory" value="aay" />
-                                    <span>AAY (Antyodaya)</span>
-                                </label>
-                                <label class="radio-option">
-                                    <input type="radio" name="cardCategory" value="phh" />
-                                    <span>PHH (Priority)</span>
-                                </label>
-                                <label class="radio-option">
-                                    <input type="radio" name="cardCategory" value="nphh" />
-                                    <span>NPHH (Non-Priority)</span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Application Type <span class="required">*</span></label>
-                            <div class="radio-group">
-                                <label class="radio-option">
-                                    <input type="radio" name="applicationType" value="new" checked />
-                                    <span>New Card</span>
-                                </label>
-                                <label class="radio-option">
-                                    <input type="radio" name="applicationType" value="addition" />
-                                    <span>Add Member</span>
-                                </label>
-                                <label class="radio-option">
-                                    <input type="radio" name="applicationType" value="deletion" />
-                                    <span>Delete Member</span>
-                                </label>
-                                <label class="radio-option">
-                                    <input type="radio" name="applicationType" value="correction" />
-                                    <span>Correction</span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Head of Family Details -->
-                <div class="section">
-                    <h2 class="section-title">Head of Family Details</h2>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="headName">Full Name <span class="required">*</span></label>
+                            <label for="childName">Name of Child <span class="required">*</span></label>
                             <input
                                 type="text"
-                                id="headName"
-                                name="headName"
-                                placeholder="Enter full name"
+                                id="childName"
+                                name="childName"
+                                placeholder="Enter child's name"
                                 required
                             />
-                        </div>
-
-                        <div class="form-group">
-                            <label for="relationship">Relationship <span class="required">*</span></label>
-                            <select id="relationship" name="relationship" required>
-                                <option value="">Select Relationship</option>
-                                <option value="self">Self (Head)</option>
-                                <option value="spouse">Spouse</option>
-                                <option value="son">Son</option>
-                                <option value="daughter">Daughter</option>
-                                <option value="father">Father</option>
-                                <option value="mother">Mother</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="dob">Date of Birth <span class="required">*</span></label>
-                            <input type="date" id="dob" name="dob" required />
+                            <span class="help-text">Leave blank if not yet named</span>
                         </div>
 
                         <div class="form-group">
                             <label>Gender <span class="required">*</span></label>
                             <div class="radio-group">
                                 <label class="radio-option">
-                                    <input type="radio" name="gender" value="male" />
+                                    <input type="radio" name="childGender" value="male" />
                                     <span>Male</span>
                                 </label>
                                 <label class="radio-option">
-                                    <input type="radio" name="gender" value="female" />
+                                    <input type="radio" name="childGender" value="female" />
                                     <span>Female</span>
                                 </label>
                                 <label class="radio-option">
-                                    <input type="radio" name="gender" value="other" />
+                                    <input type="radio" name="childGender" value="other" />
                                     <span>Other</span>
                                 </label>
                             </div>
@@ -360,78 +293,160 @@
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="aadhaar">Aadhaar Number <span class="required">*</span></label>
-                            <input
-                                type="text"
-                                id="aadhaar"
-                                name="aadhaar"
-                                placeholder="123456789012"
-                                pattern="\d{12}"
-                                maxlength="12"
-                                required
-                            />
-                            <span class="help-text">12-digit Aadhaar number</span>
+                            <label for="birthDate">Date of Birth <span class="required">*</span></label>
+                            <input type="date" id="birthDate" name="birthDate" required />
                         </div>
 
                         <div class="form-group">
-                            <label for="mobile">Mobile Number <span class="required">*</span></label>
+                            <label for="birthTime">Time of Birth</label>
+                            <input type="time" id="birthTime" name="birthTime" />
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="birthPlace">Place of Birth <span class="required">*</span></label>
+                            <select id="birthPlace" name="birthPlace" required>
+                                <option value="">Select Place</option>
+                                <option value="hospital">Hospital/Nursing Home</option>
+                                <option value="home">Home</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="hospitalName">Hospital/Institution Name</label>
                             <input
-                                type="tel"
-                                id="mobile"
-                                name="mobile"
-                                placeholder="9876543210"
-                                pattern="[6-9]\d{9}"
-                                maxlength="10"
-                                required
+                                type="text"
+                                id="hospitalName"
+                                name="hospitalName"
+                                placeholder="Enter hospital name"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="birthWeight">Birth Weight (kg)</label>
+                            <input
+                                type="text"
+                                id="birthWeight"
+                                name="birthWeight"
+                                placeholder="e.g., 3.2"
                             />
                         </div>
                     </div>
                 </div>
 
-                <!-- Family Information -->
+                <!-- Father's Details -->
                 <div class="section">
-                    <h2 class="section-title">Family Information</h2>
+                    <h2 class="section-title">Father's Details</h2>
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="totalMembers">Total Family Members <span class="required">*</span></label>
+                            <label for="fatherName">Father's Name <span class="required">*</span></label>
                             <input
-                                type="number"
-                                id="totalMembers"
-                                name="totalMembers"
-                                placeholder="Enter number"
-                                min="1"
-                                max="20"
+                                type="text"
+                                id="fatherName"
+                                name="fatherName"
+                                placeholder="Enter father's full name"
                                 required
                             />
                         </div>
 
                         <div class="form-group">
-                            <label for="annualIncome">Annual Family Income (₹) <span class="required">*</span></label>
+                            <label for="fatherAadhaar">Father's Aadhaar Number <span class="required">*</span></label>
                             <input
-                                type="number"
-                                id="annualIncome"
-                                name="annualIncome"
-                                placeholder="Enter annual income"
+                                type="text"
+                                id="fatherAadhaar"
+                                name="fatherAadhaar"
+                                placeholder="123456789012"
+                                pattern="\d{12}"
+                                maxlength="12"
                                 required
                             />
-                            <span class="help-text">Total income from all sources</span>
                         </div>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="occupation">Occupation <span class="required">*</span></label>
-                            <select id="occupation" name="occupation" required>
-                                <option value="">Select Occupation</option>
-                                <option value="farmer">Farmer</option>
-                                <option value="laborer">Daily Wage Laborer</option>
-                                <option value="govt">Government Employee</option>
-                                <option value="private">Private Employee</option>
-                                <option value="business">Business/Self-employed</option>
-                                <option value="homemaker">Homemaker</option>
-                                <option value="retired">Retired</option>
-                                <option value="unemployed">Unemployed</option>
+                            <label for="fatherEducation">Father's Education</label>
+                            <select id="fatherEducation" name="fatherEducation">
+                                <option value="">Select Education</option>
+                                <option value="below_primary">Below Primary</option>
+                                <option value="primary">Primary (1-5)</option>
+                                <option value="middle">Middle (6-8)</option>
+                                <option value="secondary">Secondary (9-10)</option>
+                                <option value="higher_secondary">Higher Secondary (11-12)</option>
+                                <option value="graduate">Graduate</option>
+                                <option value="post_graduate">Post Graduate</option>
+                                <option value="professional">Professional</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="fatherOccupation">Father's Occupation</label>
+                            <input
+                                type="text"
+                                id="fatherOccupation"
+                                name="fatherOccupation"
+                                placeholder="Enter occupation"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mother's Details -->
+                <div class="section">
+                    <h2 class="section-title">Mother's Details</h2>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="motherName">Mother's Name <span class="required">*</span></label>
+                            <input
+                                type="text"
+                                id="motherName"
+                                name="motherName"
+                                placeholder="Enter mother's full name"
+                                required
+                            />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="motherAadhaar">Mother's Aadhaar Number <span class="required">*</span></label>
+                            <input
+                                type="text"
+                                id="motherAadhaar"
+                                name="motherAadhaar"
+                                placeholder="123456789012"
+                                pattern="\d{12}"
+                                maxlength="12"
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="motherAge">Mother's Age at Birth <span class="required">*</span></label>
+                            <input
+                                type="number"
+                                id="motherAge"
+                                name="motherAge"
+                                placeholder="Enter age"
+                                min="15"
+                                max="55"
+                                required
+                            />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="deliveryType">Type of Delivery <span class="required">*</span></label>
+                            <select id="deliveryType" name="deliveryType" required>
+                                <option value="">Select Type</option>
+                                <option value="natural">Natural</option>
+                                <option value="caesarean">Caesarean</option>
+                                <option value="assisted">Assisted</option>
                             </select>
                         </div>
                     </div>
@@ -439,15 +454,15 @@
 
                 <!-- Address Details -->
                 <div class="section">
-                    <h2 class="section-title">Address Details</h2>
+                    <h2 class="section-title">Permanent Address</h2>
 
                     <div class="form-row">
                         <div class="form-group full-width">
-                            <label for="address">Residential Address <span class="required">*</span></label>
+                            <label for="address">Full Address <span class="required">*</span></label>
                             <textarea
                                 id="address"
                                 name="address"
-                                placeholder="Enter complete residential address"
+                                placeholder="Enter complete permanent address"
                                 required
                             ></textarea>
                         </div>
@@ -455,12 +470,12 @@
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="village">Village/Town/City <span class="required">*</span></label>
+                            <label for="city">City/Town <span class="required">*</span></label>
                             <input
                                 type="text"
-                                id="village"
-                                name="village"
-                                placeholder="Enter village/town name"
+                                id="city"
+                                name="city"
+                                placeholder="Enter city/town"
                                 required
                             />
                         </div>
@@ -471,7 +486,7 @@
                                 type="text"
                                 id="district"
                                 name="district"
-                                placeholder="Enter district name"
+                                placeholder="Enter district"
                                 required
                             />
                         </div>
@@ -514,13 +529,67 @@
                     </div>
                 </div>
 
+                <!-- Informant Details -->
+                <div class="section">
+                    <h2 class="section-title">Informant Details</h2>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="informantName">Name of Informant <span class="required">*</span></label>
+                            <input
+                                type="text"
+                                id="informantName"
+                                name="informantName"
+                                placeholder="Person reporting the birth"
+                                required
+                            />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="informantRelation">Relation to Child <span class="required">*</span></label>
+                            <select id="informantRelation" name="informantRelation" required>
+                                <option value="">Select Relation</option>
+                                <option value="father">Father</option>
+                                <option value="mother">Mother</option>
+                                <option value="relative">Relative</option>
+                                <option value="hospital">Hospital Authority</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="informantMobile">Mobile Number <span class="required">*</span></label>
+                            <input
+                                type="tel"
+                                id="informantMobile"
+                                name="informantMobile"
+                                placeholder="9876543210"
+                                pattern="[6-9]\d{9}"
+                                maxlength="10"
+                                required
+                            />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="informantEmail">Email Address</label>
+                            <input
+                                type="email"
+                                id="informantEmail"
+                                name="informantEmail"
+                                placeholder="example@email.com"
+                            />
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Submit Section -->
                 <div class="submit-section">
                     <button type="button" class="btn btn-secondary" onclick="resetForm()">
                         Reset Form
                     </button>
                     <button type="submit" class="btn btn-primary">
-                        Submit Application
+                        Submit Registration
                     </button>
                 </div>
             </form>
@@ -533,17 +602,17 @@
     </div>
 
     <script>
-        document.getElementById('rationCardApplication').addEventListener('submit', function(e) {
+        document.getElementById('birthCertificateForm').addEventListener('submit', function(e) {
             e.preventDefault();
             const formData = new FormData(this);
             const data = {};
             formData.forEach((value, key) => data[key] = value);
             console.log('Form submitted:', data);
-            alert('Ration Card Application submitted successfully!\n\nData:\n' + JSON.stringify(data, null, 2));
+            alert('Birth Certificate Registration submitted successfully!\n\nData:\n' + JSON.stringify(data, null, 2));
         });
 
         function resetForm() {
-            document.getElementById('rationCardApplication').reset();
+            document.getElementById('birthCertificateForm').reset();
             document.querySelectorAll('.va-highlighted-field').forEach(el => {
                 el.classList.remove('va-highlighted-field');
             });

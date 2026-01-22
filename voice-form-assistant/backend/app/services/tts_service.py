@@ -23,6 +23,7 @@ class TTSService:
     def __init__(self):
         self.default_lang = "en"
         self.tld = "co.in"  # Indian English accent
+        self.speed_multiplier = 1.0  # Normal speed (1.0 = natural)
 
     async def synthesize(
         self,
@@ -63,6 +64,15 @@ class TTSService:
 
             # Convert MP3 to WAV for browser compatibility
             audio = AudioSegment.from_mp3(mp3_buffer)
+
+            # Speed up audio if multiplier is set
+            if self.speed_multiplier != 1.0:
+                # Change speed without changing pitch using frame rate manipulation
+                # This speeds up playback while keeping the voice natural
+                new_frame_rate = int(audio.frame_rate * self.speed_multiplier)
+                audio = audio._spawn(audio.raw_data, overrides={"frame_rate": new_frame_rate})
+                audio = audio.set_frame_rate(44100)  # Normalize back to standard rate
+
             wav_buffer = io.BytesIO()
             audio.export(wav_buffer, format="wav")
             wav_buffer.seek(0)

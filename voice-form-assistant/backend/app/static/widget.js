@@ -268,8 +268,9 @@
                 this.stream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         channelCount: 1,
-                        echoCancellation: true,
-                        noiseSuppression: true
+                        echoCancellation: false,   // Keep off - can distort speech
+                        noiseSuppression: false,   // Keep off - can cut consonants
+                        autoGainControl: true      // ON - normalizes volume levels
                     }
                 });
 
@@ -301,7 +302,7 @@
 
                 this.mediaRecorder = new MediaRecorder(this.stream, {
                     mimeType: mimeType,
-                    audioBitsPerSecond: 128000  // 128kbps for better quality
+                    audioBitsPerSecond: 256000  // 256kbps for higher quality transcription
                 });
                 this.mediaRecorder.ondataavailable = (event) => {
                     if (event.data.size > 0) {
@@ -550,6 +551,20 @@
                     <div class="va-content">
                         <div class="va-status">Click Start to begin</div>
                         <div class="va-current-field" style="display: none;"></div>
+                        <div class="va-nav-row" style="display: none;">
+                            <button class="va-prev-btn" title="Go to previous field" disabled>
+                                <svg viewBox="0 0 24 24" width="16" height="16">
+                                    <path fill="currentColor" d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                                </svg>
+                                Previous
+                            </button>
+                            <button class="va-skip-btn" title="Skip this field">
+                                Skip
+                                <svg viewBox="0 0 24 24" width="16" height="16">
+                                    <path fill="currentColor" d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+                                </svg>
+                            </button>
+                        </div>
                         <canvas class="va-waveform" width="280" height="60"></canvas>
                         <div class="va-mic-level-container">
                             <div class="va-mic-level-bar"></div>
@@ -591,6 +606,9 @@
                 closeBtn: this.container.querySelector('.va-close-btn'),
                 status: this.container.querySelector('.va-status'),
                 currentField: this.container.querySelector('.va-current-field'),
+                navRow: this.container.querySelector('.va-nav-row'),
+                prevBtn: this.container.querySelector('.va-prev-btn'),
+                skipBtn: this.container.querySelector('.va-skip-btn'),
                 speakHint: this.container.querySelector('.va-speak-hint'),
                 waveform: this.container.querySelector('.va-waveform'),
                 micLevelBar: this.container.querySelector('.va-mic-level-bar'),
@@ -607,6 +625,10 @@
 
             this.elements.toggleBtn.addEventListener('click', () => this.toggle());
             this.elements.closeBtn.addEventListener('click', () => this.hide());
+            
+            // Navigation button callbacks (set by VoiceFormAssistant)
+            this._onPrevClick = null;
+            this._onSkipClick = null;
 
             console.log('[VoiceAssistant] UI created');
         }
@@ -752,6 +774,43 @@
         getCanvas() {
             return this.elements.waveform;
         }
+
+        // Navigation methods
+        showNavigation() {
+            if (this.elements.navRow) {
+                this.elements.navRow.style.display = 'flex';
+            }
+        }
+
+        hideNavigation() {
+            if (this.elements.navRow) {
+                this.elements.navRow.style.display = 'none';
+            }
+        }
+
+        updateNavigation(fieldIndex, totalFields, isCurrentFieldRequired) {
+            // Previous button: disabled on first field
+            if (this.elements.prevBtn) {
+                this.elements.prevBtn.disabled = fieldIndex <= 0;
+            }
+            
+            // Skip button: disabled for required fields
+            if (this.elements.skipBtn) {
+                this.elements.skipBtn.disabled = isCurrentFieldRequired;
+                this.elements.skipBtn.title = isCurrentFieldRequired 
+                    ? 'This field is required' 
+                    : 'Skip this field';
+            }
+        }
+
+        setNavigationCallbacks(onPrev, onSkip) {
+            if (this.elements.prevBtn) {
+                this.elements.prevBtn.addEventListener('click', onPrev);
+            }
+            if (this.elements.skipBtn) {
+                this.elements.skipBtn.addEventListener('click', onSkip);
+            }
+        }
     }
 
     /**
@@ -767,6 +826,9 @@
             this.sessionId = null;
             this.isConnected = false;
             this.isRecording = false;
+            // Language tracking for better transcription accuracy
+            this.detectedLanguage = null;  // Language detected from previous transcriptions
+            this.preferredLanguage = null; // User-selected language preference (if any)
         }
 
         async init() {
@@ -824,6 +886,32 @@
                     await this.audioHandler.audioContext.resume();
                 }
                 this.sendConfirmation(false);
+            });
+
+            // Navigation buttons
+            this.ui.setNavigationCallbacks(
+                () => this.navigateField('previous'),
+                () => this.navigateField('next')
+            );
+        }
+
+        navigateField(direction) {
+            if (!this.sessionId) {
+                console.warn('[VoiceAssistant] No session for navigation');
+                return;
+            }
+
+            // Don't navigate while processing or recording
+            if (this.isRecording) {
+                this.ui.setStatus('Stop recording first', 'error');
+                return;
+            }
+
+            this.ui.showProcessingState();
+            this.send({
+                type: 'navigate_field',
+                sessionId: this.sessionId,
+                direction: direction
             });
         }
 
@@ -884,6 +972,18 @@
                     this.formAnalyzer.highlightField(message.fieldId);
                     if (message.progress) {
                         this.ui.updateProgress(message.progress.filled_fields, message.progress.total_fields);
+                    }
+                    // Update navigation buttons
+                    this.ui.showNavigation();
+                    this.ui.updateNavigation(
+                        message.fieldIndex || 0,
+                        message.progress ? message.progress.total_fields : 0,
+                        message.fieldRequired || false
+                    );
+                    // Track detected language for better transcription hints
+                    if (message.detectedLanguage) {
+                        this.detectedLanguage = message.detectedLanguage;
+                        console.log('[VoiceAssistant] Detected language:', message.detectedLanguage);
                     }
                     this.ui.showPlaybackState();
                     await this.audioHandler.playAudio(message.audio, message.text);
@@ -1033,11 +1133,19 @@
             this._startMicLevelMonitor();
             await this.audioHandler.startRecording((base64Audio) => {
                 this.ui.showProcessingState();
-                this.send({
+                // Send language hint to improve transcription accuracy
+                // Priority: user preference > detected language from previous turns
+                const languageHint = this.preferredLanguage || this.detectedLanguage;
+                const message = {
                     type: 'audio_complete',
                     sessionId: this.sessionId,
                     audio: base64Audio
-                });
+                };
+                if (languageHint) {
+                    message.languageHint = languageHint;
+                    console.log('[VoiceAssistant] Sending with language hint:', languageHint);
+                }
+                this.send(message);
             });
         }
 

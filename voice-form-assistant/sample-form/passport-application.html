@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ration Card Application - Public Distribution System</title>
+    <title>Passport Application - Government of India</title>
     <style>
         * {
             margin: 0;
@@ -13,7 +13,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: linear-gradient(135deg, #ff6f00 0%, #ff8f00 100%);
+            background: linear-gradient(135deg, #1a237e 0%, #0d47a1 100%);
             min-height: 100vh;
             padding: 20px;
         }
@@ -33,7 +33,7 @@
         }
 
         .header h1 {
-            color: #e65100;
+            color: #1a237e;
             font-size: 24px;
             margin-bottom: 5px;
         }
@@ -56,10 +56,10 @@
 
         .section-title {
             font-size: 18px;
-            color: #e65100;
+            color: #1a237e;
             margin-bottom: 20px;
             padding-bottom: 10px;
-            border-bottom: 2px solid #fff3e0;
+            border-bottom: 2px solid #e8eaf6;
         }
 
         .form-row {
@@ -93,7 +93,6 @@
         input[type="email"],
         input[type="tel"],
         input[type="date"],
-        input[type="number"],
         select,
         textarea {
             padding: 12px 16px;
@@ -108,8 +107,8 @@
         select:focus,
         textarea:focus {
             outline: none;
-            border-color: #ff6f00;
-            box-shadow: 0 0 0 3px rgba(255, 111, 0, 0.1);
+            border-color: #1a237e;
+            box-shadow: 0 0 0 3px rgba(26, 35, 126, 0.1);
         }
 
         textarea {
@@ -121,7 +120,6 @@
             display: flex;
             gap: 20px;
             padding: 10px 0;
-            flex-wrap: wrap;
         }
 
         .radio-option {
@@ -137,10 +135,30 @@
             cursor: pointer;
         }
 
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 10px 0;
+        }
+
+        .checkbox-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        .checkbox-option input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
         .submit-section {
             margin-top: 30px;
             padding-top: 20px;
-            border-top: 2px solid #fff3e0;
+            border-top: 2px solid #e8eaf6;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -157,13 +175,13 @@
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #ff6f00 0%, #ff8f00 100%);
+            background: linear-gradient(135deg, #1a237e 0%, #0d47a1 100%);
             color: white;
         }
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(255, 111, 0, 0.4);
+            box-shadow: 0 4px 15px rgba(26, 35, 126, 0.4);
         }
 
         .btn-secondary {
@@ -182,15 +200,15 @@
         }
 
         .voice-hint {
-            background: #fff3e0;
-            border-left: 4px solid #ff6f00;
+            background: #e3f2fd;
+            border-left: 4px solid #1976d2;
             padding: 16px;
             border-radius: 0 8px 8px 0;
             margin-bottom: 24px;
         }
 
         .voice-hint h3 {
-            color: #e65100;
+            color: #1565c0;
             font-size: 14px;
             margin-bottom: 8px;
         }
@@ -212,7 +230,7 @@
             text-align: center;
             margin-top: 30px;
             padding: 20px;
-            color: rgba(255,255,255,0.9);
+            color: rgba(255,255,255,0.8);
             font-size: 12px;
         }
 
@@ -239,8 +257,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>Ration Card Application</h1>
-            <p>Public Distribution System - Food & Civil Supplies Department</p>
+            <h1>Passport Application Form</h1>
+            <p>Ministry of External Affairs, Government of India</p>
         </div>
 
         <div class="form-container">
@@ -249,87 +267,76 @@
                 <p>Click the microphone button in the bottom-right corner to fill this form using your voice.</p>
                 <ul>
                     <li>Supports Hindi, Bengali, Tamil, Telugu, Marathi, and English</li>
-                    <li>Perfect for applicants who prefer speaking over typing</li>
+                    <li>Speak clearly and confirm each field</li>
                 </ul>
             </div>
 
-            <form id="rationCardApplication" action="#" method="POST" novalidate>
-                <!-- Card Type -->
+            <form id="passportApplication" action="#" method="POST" novalidate>
+                <!-- Application Type -->
                 <div class="section">
-                    <h2 class="section-title">Ration Card Type</h2>
+                    <h2 class="section-title">Application Type</h2>
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Category of Ration Card <span class="required">*</span></label>
+                            <label>Type of Application <span class="required">*</span></label>
                             <div class="radio-group">
                                 <label class="radio-option">
-                                    <input type="radio" name="cardCategory" value="aay" />
-                                    <span>AAY (Antyodaya)</span>
+                                    <input type="radio" name="applicationType" value="fresh" checked />
+                                    <span>Fresh Passport</span>
                                 </label>
                                 <label class="radio-option">
-                                    <input type="radio" name="cardCategory" value="phh" />
-                                    <span>PHH (Priority)</span>
-                                </label>
-                                <label class="radio-option">
-                                    <input type="radio" name="cardCategory" value="nphh" />
-                                    <span>NPHH (Non-Priority)</span>
+                                    <input type="radio" name="applicationType" value="reissue" />
+                                    <span>Re-issue</span>
                                 </label>
                             </div>
                         </div>
-                    </div>
 
-                    <div class="form-row">
                         <div class="form-group">
-                            <label>Application Type <span class="required">*</span></label>
-                            <div class="radio-group">
-                                <label class="radio-option">
-                                    <input type="radio" name="applicationType" value="new" checked />
-                                    <span>New Card</span>
-                                </label>
-                                <label class="radio-option">
-                                    <input type="radio" name="applicationType" value="addition" />
-                                    <span>Add Member</span>
-                                </label>
-                                <label class="radio-option">
-                                    <input type="radio" name="applicationType" value="deletion" />
-                                    <span>Delete Member</span>
-                                </label>
-                                <label class="radio-option">
-                                    <input type="radio" name="applicationType" value="correction" />
-                                    <span>Correction</span>
-                                </label>
-                            </div>
+                            <label for="bookletType">Booklet Type <span class="required">*</span></label>
+                            <select id="bookletType" name="bookletType" required>
+                                <option value="">Select Booklet Type</option>
+                                <option value="36">36 Pages</option>
+                                <option value="60">60 Pages (Frequent Traveler)</option>
+                            </select>
                         </div>
                     </div>
                 </div>
 
-                <!-- Head of Family Details -->
+                <!-- Personal Details -->
                 <div class="section">
-                    <h2 class="section-title">Head of Family Details</h2>
+                    <h2 class="section-title">Personal Details</h2>
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="headName">Full Name <span class="required">*</span></label>
+                            <label for="firstName">First Name <span class="required">*</span></label>
                             <input
                                 type="text"
-                                id="headName"
-                                name="headName"
-                                placeholder="Enter full name"
+                                id="firstName"
+                                name="firstName"
+                                placeholder="Enter first name"
                                 required
                             />
                         </div>
 
                         <div class="form-group">
-                            <label for="relationship">Relationship <span class="required">*</span></label>
-                            <select id="relationship" name="relationship" required>
-                                <option value="">Select Relationship</option>
-                                <option value="self">Self (Head)</option>
-                                <option value="spouse">Spouse</option>
-                                <option value="son">Son</option>
-                                <option value="daughter">Daughter</option>
-                                <option value="father">Father</option>
-                                <option value="mother">Mother</option>
-                            </select>
+                            <label for="middleName">Middle Name</label>
+                            <input
+                                type="text"
+                                id="middleName"
+                                name="middleName"
+                                placeholder="Enter middle name"
+                            />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="lastName">Last Name <span class="required">*</span></label>
+                            <input
+                                type="text"
+                                id="lastName"
+                                name="lastName"
+                                placeholder="Enter last name"
+                                required
+                            />
                         </div>
                     </div>
 
@@ -339,6 +346,19 @@
                             <input type="date" id="dob" name="dob" required />
                         </div>
 
+                        <div class="form-group">
+                            <label for="placeOfBirth">Place of Birth <span class="required">*</span></label>
+                            <input
+                                type="text"
+                                id="placeOfBirth"
+                                name="placeOfBirth"
+                                placeholder="City/Town of birth"
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    <div class="form-row">
                         <div class="form-group">
                             <label>Gender <span class="required">*</span></label>
                             <div class="radio-group">
@@ -356,23 +376,66 @@
                                 </label>
                             </div>
                         </div>
+
+                        <div class="form-group">
+                            <label for="maritalStatus">Marital Status <span class="required">*</span></label>
+                            <select id="maritalStatus" name="maritalStatus" required>
+                                <option value="">Select Status</option>
+                                <option value="single">Single</option>
+                                <option value="married">Married</option>
+                                <option value="divorced">Divorced</option>
+                                <option value="widowed">Widowed</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Family Details -->
+                <div class="section">
+                    <h2 class="section-title">Family Details</h2>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="fatherName">Father's Name <span class="required">*</span></label>
+                            <input
+                                type="text"
+                                id="fatherName"
+                                name="fatherName"
+                                placeholder="Enter father's full name"
+                                required
+                            />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="motherName">Mother's Name <span class="required">*</span></label>
+                            <input
+                                type="text"
+                                id="motherName"
+                                name="motherName"
+                                placeholder="Enter mother's full name"
+                                required
+                            />
+                        </div>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="aadhaar">Aadhaar Number <span class="required">*</span></label>
+                            <label for="spouseName">Spouse's Name (if married)</label>
                             <input
                                 type="text"
-                                id="aadhaar"
-                                name="aadhaar"
-                                placeholder="123456789012"
-                                pattern="\d{12}"
-                                maxlength="12"
-                                required
+                                id="spouseName"
+                                name="spouseName"
+                                placeholder="Enter spouse's full name"
                             />
-                            <span class="help-text">12-digit Aadhaar number</span>
                         </div>
+                    </div>
+                </div>
 
+                <!-- Contact Details -->
+                <div class="section">
+                    <h2 class="section-title">Contact Details</h2>
+
+                    <div class="form-row">
                         <div class="form-group">
                             <label for="mobile">Mobile Number <span class="required">*</span></label>
                             <input
@@ -385,69 +448,26 @@
                                 required
                             />
                         </div>
-                    </div>
-                </div>
 
-                <!-- Family Information -->
-                <div class="section">
-                    <h2 class="section-title">Family Information</h2>
-
-                    <div class="form-row">
                         <div class="form-group">
-                            <label for="totalMembers">Total Family Members <span class="required">*</span></label>
+                            <label for="email">Email Address <span class="required">*</span></label>
                             <input
-                                type="number"
-                                id="totalMembers"
-                                name="totalMembers"
-                                placeholder="Enter number"
-                                min="1"
-                                max="20"
+                                type="email"
+                                id="email"
+                                name="email"
+                                placeholder="example@email.com"
                                 required
                             />
                         </div>
-
-                        <div class="form-group">
-                            <label for="annualIncome">Annual Family Income (₹) <span class="required">*</span></label>
-                            <input
-                                type="number"
-                                id="annualIncome"
-                                name="annualIncome"
-                                placeholder="Enter annual income"
-                                required
-                            />
-                            <span class="help-text">Total income from all sources</span>
-                        </div>
                     </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="occupation">Occupation <span class="required">*</span></label>
-                            <select id="occupation" name="occupation" required>
-                                <option value="">Select Occupation</option>
-                                <option value="farmer">Farmer</option>
-                                <option value="laborer">Daily Wage Laborer</option>
-                                <option value="govt">Government Employee</option>
-                                <option value="private">Private Employee</option>
-                                <option value="business">Business/Self-employed</option>
-                                <option value="homemaker">Homemaker</option>
-                                <option value="retired">Retired</option>
-                                <option value="unemployed">Unemployed</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Address Details -->
-                <div class="section">
-                    <h2 class="section-title">Address Details</h2>
 
                     <div class="form-row">
                         <div class="form-group full-width">
-                            <label for="address">Residential Address <span class="required">*</span></label>
+                            <label for="address">Present Address <span class="required">*</span></label>
                             <textarea
                                 id="address"
                                 name="address"
-                                placeholder="Enter complete residential address"
+                                placeholder="Enter complete present address"
                                 required
                             ></textarea>
                         </div>
@@ -455,29 +475,18 @@
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="village">Village/Town/City <span class="required">*</span></label>
+                            <label for="pincode">PIN Code <span class="required">*</span></label>
                             <input
                                 type="text"
-                                id="village"
-                                name="village"
-                                placeholder="Enter village/town name"
+                                id="pincode"
+                                name="pincode"
+                                placeholder="110001"
+                                pattern="\d{6}"
+                                maxlength="6"
                                 required
                             />
                         </div>
 
-                        <div class="form-group">
-                            <label for="district">District <span class="required">*</span></label>
-                            <input
-                                type="text"
-                                id="district"
-                                name="district"
-                                placeholder="Enter district name"
-                                required
-                            />
-                        </div>
-                    </div>
-
-                    <div class="form-row">
                         <div class="form-group">
                             <label for="state">State <span class="required">*</span></label>
                             <select id="state" name="state" required>
@@ -498,16 +507,34 @@
                                 <option value="West Bengal">West Bengal</option>
                             </select>
                         </div>
+                    </div>
+                </div>
 
+                <!-- Emergency Contact -->
+                <div class="section">
+                    <h2 class="section-title">Emergency Contact</h2>
+
+                    <div class="form-row">
                         <div class="form-group">
-                            <label for="pincode">PIN Code <span class="required">*</span></label>
+                            <label for="emergencyName">Contact Person Name <span class="required">*</span></label>
                             <input
                                 type="text"
-                                id="pincode"
-                                name="pincode"
-                                placeholder="110001"
-                                pattern="\d{6}"
-                                maxlength="6"
+                                id="emergencyName"
+                                name="emergencyName"
+                                placeholder="Enter emergency contact name"
+                                required
+                            />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="emergencyMobile">Contact Mobile <span class="required">*</span></label>
+                            <input
+                                type="tel"
+                                id="emergencyMobile"
+                                name="emergencyMobile"
+                                placeholder="9876543210"
+                                pattern="[6-9]\d{9}"
+                                maxlength="10"
                                 required
                             />
                         </div>
@@ -533,17 +560,17 @@
     </div>
 
     <script>
-        document.getElementById('rationCardApplication').addEventListener('submit', function(e) {
+        document.getElementById('passportApplication').addEventListener('submit', function(e) {
             e.preventDefault();
             const formData = new FormData(this);
             const data = {};
             formData.forEach((value, key) => data[key] = value);
             console.log('Form submitted:', data);
-            alert('Ration Card Application submitted successfully!\n\nData:\n' + JSON.stringify(data, null, 2));
+            alert('Passport Application submitted successfully!\n\nData:\n' + JSON.stringify(data, null, 2));
         });
 
         function resetForm() {
-            document.getElementById('rationCardApplication').reset();
+            document.getElementById('passportApplication').reset();
             document.querySelectorAll('.va-highlighted-field').forEach(el => {
                 el.classList.remove('va-highlighted-field');
             });

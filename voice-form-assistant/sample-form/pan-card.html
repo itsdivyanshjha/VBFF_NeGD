@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ration Card Application - Public Distribution System</title>
+    <title>PAN Card Application - Income Tax Department</title>
     <style>
         * {
             margin: 0;
@@ -13,7 +13,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: linear-gradient(135deg, #ff6f00 0%, #ff8f00 100%);
+            background: linear-gradient(135deg, #2e7d32 0%, #388e3c 100%);
             min-height: 100vh;
             padding: 20px;
         }
@@ -33,7 +33,7 @@
         }
 
         .header h1 {
-            color: #e65100;
+            color: #1b5e20;
             font-size: 24px;
             margin-bottom: 5px;
         }
@@ -56,10 +56,10 @@
 
         .section-title {
             font-size: 18px;
-            color: #e65100;
+            color: #1b5e20;
             margin-bottom: 20px;
             padding-bottom: 10px;
-            border-bottom: 2px solid #fff3e0;
+            border-bottom: 2px solid #e8f5e9;
         }
 
         .form-row {
@@ -93,7 +93,6 @@
         input[type="email"],
         input[type="tel"],
         input[type="date"],
-        input[type="number"],
         select,
         textarea {
             padding: 12px 16px;
@@ -108,8 +107,8 @@
         select:focus,
         textarea:focus {
             outline: none;
-            border-color: #ff6f00;
-            box-shadow: 0 0 0 3px rgba(255, 111, 0, 0.1);
+            border-color: #2e7d32;
+            box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.1);
         }
 
         textarea {
@@ -140,7 +139,7 @@
         .submit-section {
             margin-top: 30px;
             padding-top: 20px;
-            border-top: 2px solid #fff3e0;
+            border-top: 2px solid #e8f5e9;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -157,13 +156,13 @@
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #ff6f00 0%, #ff8f00 100%);
+            background: linear-gradient(135deg, #2e7d32 0%, #388e3c 100%);
             color: white;
         }
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(255, 111, 0, 0.4);
+            box-shadow: 0 4px 15px rgba(46, 125, 50, 0.4);
         }
 
         .btn-secondary {
@@ -182,15 +181,15 @@
         }
 
         .voice-hint {
-            background: #fff3e0;
-            border-left: 4px solid #ff6f00;
+            background: #e8f5e9;
+            border-left: 4px solid #2e7d32;
             padding: 16px;
             border-radius: 0 8px 8px 0;
             margin-bottom: 24px;
         }
 
         .voice-hint h3 {
-            color: #e65100;
+            color: #1b5e20;
             font-size: 14px;
             margin-bottom: 8px;
         }
@@ -239,8 +238,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>Ration Card Application</h1>
-            <p>Public Distribution System - Food & Civil Supplies Department</p>
+            <h1>PAN Card Application (Form 49A)</h1>
+            <p>Income Tax Department, Government of India</p>
         </div>
 
         <div class="form-container">
@@ -249,30 +248,26 @@
                 <p>Click the microphone button in the bottom-right corner to fill this form using your voice.</p>
                 <ul>
                     <li>Supports Hindi, Bengali, Tamil, Telugu, Marathi, and English</li>
-                    <li>Perfect for applicants who prefer speaking over typing</li>
+                    <li>Say your name exactly as it should appear on PAN card</li>
                 </ul>
             </div>
 
-            <form id="rationCardApplication" action="#" method="POST" novalidate>
-                <!-- Card Type -->
+            <form id="panApplication" action="#" method="POST" novalidate>
+                <!-- Application Type -->
                 <div class="section">
-                    <h2 class="section-title">Ration Card Type</h2>
+                    <h2 class="section-title">Application Type</h2>
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Category of Ration Card <span class="required">*</span></label>
+                            <label>Purpose of Application <span class="required">*</span></label>
                             <div class="radio-group">
                                 <label class="radio-option">
-                                    <input type="radio" name="cardCategory" value="aay" />
-                                    <span>AAY (Antyodaya)</span>
+                                    <input type="radio" name="purpose" value="new" checked />
+                                    <span>New PAN</span>
                                 </label>
                                 <label class="radio-option">
-                                    <input type="radio" name="cardCategory" value="phh" />
-                                    <span>PHH (Priority)</span>
-                                </label>
-                                <label class="radio-option">
-                                    <input type="radio" name="cardCategory" value="nphh" />
-                                    <span>NPHH (Non-Priority)</span>
+                                    <input type="radio" name="purpose" value="correction" />
+                                    <span>Correction/Change in PAN Data</span>
                                 </label>
                             </div>
                         </div>
@@ -280,56 +275,67 @@
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Application Type <span class="required">*</span></label>
-                            <div class="radio-group">
-                                <label class="radio-option">
-                                    <input type="radio" name="applicationType" value="new" checked />
-                                    <span>New Card</span>
-                                </label>
-                                <label class="radio-option">
-                                    <input type="radio" name="applicationType" value="addition" />
-                                    <span>Add Member</span>
-                                </label>
-                                <label class="radio-option">
-                                    <input type="radio" name="applicationType" value="deletion" />
-                                    <span>Delete Member</span>
-                                </label>
-                                <label class="radio-option">
-                                    <input type="radio" name="applicationType" value="correction" />
-                                    <span>Correction</span>
-                                </label>
-                            </div>
+                            <label for="applicantStatus">Status of Applicant <span class="required">*</span></label>
+                            <select id="applicantStatus" name="applicantStatus" required>
+                                <option value="">Select Status</option>
+                                <option value="individual">Individual</option>
+                                <option value="huf">Hindu Undivided Family (HUF)</option>
+                                <option value="company">Company</option>
+                                <option value="firm">Partnership Firm</option>
+                                <option value="trust">Trust</option>
+                            </select>
                         </div>
                     </div>
                 </div>
 
-                <!-- Head of Family Details -->
+                <!-- Personal Details -->
                 <div class="section">
-                    <h2 class="section-title">Head of Family Details</h2>
+                    <h2 class="section-title">Personal Details</h2>
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="headName">Full Name <span class="required">*</span></label>
+                            <label for="lastName">Last Name / Surname <span class="required">*</span></label>
                             <input
                                 type="text"
-                                id="headName"
-                                name="headName"
-                                placeholder="Enter full name"
+                                id="lastName"
+                                name="lastName"
+                                placeholder="Enter last name"
                                 required
                             />
                         </div>
 
                         <div class="form-group">
-                            <label for="relationship">Relationship <span class="required">*</span></label>
-                            <select id="relationship" name="relationship" required>
-                                <option value="">Select Relationship</option>
-                                <option value="self">Self (Head)</option>
-                                <option value="spouse">Spouse</option>
-                                <option value="son">Son</option>
-                                <option value="daughter">Daughter</option>
-                                <option value="father">Father</option>
-                                <option value="mother">Mother</option>
-                            </select>
+                            <label for="firstName">First Name <span class="required">*</span></label>
+                            <input
+                                type="text"
+                                id="firstName"
+                                name="firstName"
+                                placeholder="Enter first name"
+                                required
+                            />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="middleName">Middle Name</label>
+                            <input
+                                type="text"
+                                id="middleName"
+                                name="middleName"
+                                placeholder="Enter middle name"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="fatherName">Father's Name <span class="required">*</span></label>
+                            <input
+                                type="text"
+                                id="fatherName"
+                                name="fatherName"
+                                placeholder="Enter father's full name"
+                                required
+                            />
                         </div>
                     </div>
 
@@ -351,10 +357,41 @@
                                     <span>Female</span>
                                 </label>
                                 <label class="radio-option">
-                                    <input type="radio" name="gender" value="other" />
-                                    <span>Other</span>
+                                    <input type="radio" name="gender" value="transgender" />
+                                    <span>Transgender</span>
                                 </label>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contact Information -->
+                <div class="section">
+                    <h2 class="section-title">Contact Information</h2>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="mobile">Mobile Number <span class="required">*</span></label>
+                            <input
+                                type="tel"
+                                id="mobile"
+                                name="mobile"
+                                placeholder="9876543210"
+                                pattern="[6-9]\d{9}"
+                                maxlength="10"
+                                required
+                            />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="email">Email Address <span class="required">*</span></label>
+                            <input
+                                type="email"
+                                id="email"
+                                name="email"
+                                placeholder="example@email.com"
+                                required
+                            />
                         </div>
                     </div>
 
@@ -370,114 +407,74 @@
                                 maxlength="12"
                                 required
                             />
-                            <span class="help-text">12-digit Aadhaar number</span>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="mobile">Mobile Number <span class="required">*</span></label>
-                            <input
-                                type="tel"
-                                id="mobile"
-                                name="mobile"
-                                placeholder="9876543210"
-                                pattern="[6-9]\d{9}"
-                                maxlength="10"
-                                required
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Family Information -->
-                <div class="section">
-                    <h2 class="section-title">Family Information</h2>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="totalMembers">Total Family Members <span class="required">*</span></label>
-                            <input
-                                type="number"
-                                id="totalMembers"
-                                name="totalMembers"
-                                placeholder="Enter number"
-                                min="1"
-                                max="20"
-                                required
-                            />
-                        </div>
-
-                        <div class="form-group">
-                            <label for="annualIncome">Annual Family Income (₹) <span class="required">*</span></label>
-                            <input
-                                type="number"
-                                id="annualIncome"
-                                name="annualIncome"
-                                placeholder="Enter annual income"
-                                required
-                            />
-                            <span class="help-text">Total income from all sources</span>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="occupation">Occupation <span class="required">*</span></label>
-                            <select id="occupation" name="occupation" required>
-                                <option value="">Select Occupation</option>
-                                <option value="farmer">Farmer</option>
-                                <option value="laborer">Daily Wage Laborer</option>
-                                <option value="govt">Government Employee</option>
-                                <option value="private">Private Employee</option>
-                                <option value="business">Business/Self-employed</option>
-                                <option value="homemaker">Homemaker</option>
-                                <option value="retired">Retired</option>
-                                <option value="unemployed">Unemployed</option>
-                            </select>
+                            <span class="help-text">12-digit Aadhaar number (mandatory for individuals)</span>
                         </div>
                     </div>
                 </div>
 
                 <!-- Address Details -->
                 <div class="section">
-                    <h2 class="section-title">Address Details</h2>
-
-                    <div class="form-row">
-                        <div class="form-group full-width">
-                            <label for="address">Residential Address <span class="required">*</span></label>
-                            <textarea
-                                id="address"
-                                name="address"
-                                placeholder="Enter complete residential address"
-                                required
-                            ></textarea>
-                        </div>
-                    </div>
+                    <h2 class="section-title">Address for Communication</h2>
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="village">Village/Town/City <span class="required">*</span></label>
+                            <label for="flatNo">Flat/Door/Block No. <span class="required">*</span></label>
                             <input
                                 type="text"
-                                id="village"
-                                name="village"
-                                placeholder="Enter village/town name"
+                                id="flatNo"
+                                name="flatNo"
+                                placeholder="Enter flat/door number"
                                 required
                             />
                         </div>
 
                         <div class="form-group">
-                            <label for="district">District <span class="required">*</span></label>
+                            <label for="building">Building/Village Name</label>
                             <input
                                 type="text"
-                                id="district"
-                                name="district"
-                                placeholder="Enter district name"
+                                id="building"
+                                name="building"
+                                placeholder="Enter building name"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="street">Road/Street/Lane <span class="required">*</span></label>
+                            <input
+                                type="text"
+                                id="street"
+                                name="street"
+                                placeholder="Enter street name"
+                                required
+                            />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="area">Area/Locality <span class="required">*</span></label>
+                            <input
+                                type="text"
+                                id="area"
+                                name="area"
+                                placeholder="Enter area/locality"
                                 required
                             />
                         </div>
                     </div>
 
                     <div class="form-row">
+                        <div class="form-group">
+                            <label for="city">Town/City/District <span class="required">*</span></label>
+                            <input
+                                type="text"
+                                id="city"
+                                name="city"
+                                placeholder="Enter city/district"
+                                required
+                            />
+                        </div>
+
                         <div class="form-group">
                             <label for="state">State <span class="required">*</span></label>
                             <select id="state" name="state" required>
@@ -514,6 +511,26 @@
                     </div>
                 </div>
 
+                <!-- Source of Income -->
+                <div class="section">
+                    <h2 class="section-title">Source of Income</h2>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="incomeSource">Primary Source of Income <span class="required">*</span></label>
+                            <select id="incomeSource" name="incomeSource" required>
+                                <option value="">Select Source</option>
+                                <option value="salary">Salary</option>
+                                <option value="business">Income from Business/Profession</option>
+                                <option value="house_property">Income from House Property</option>
+                                <option value="capital_gains">Capital Gains</option>
+                                <option value="other">Income from Other Sources</option>
+                                <option value="no_income">No Income</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Submit Section -->
                 <div class="submit-section">
                     <button type="button" class="btn btn-secondary" onclick="resetForm()">
@@ -533,17 +550,17 @@
     </div>
 
     <script>
-        document.getElementById('rationCardApplication').addEventListener('submit', function(e) {
+        document.getElementById('panApplication').addEventListener('submit', function(e) {
             e.preventDefault();
             const formData = new FormData(this);
             const data = {};
             formData.forEach((value, key) => data[key] = value);
             console.log('Form submitted:', data);
-            alert('Ration Card Application submitted successfully!\n\nData:\n' + JSON.stringify(data, null, 2));
+            alert('PAN Card Application submitted successfully!\n\nData:\n' + JSON.stringify(data, null, 2));
         });
 
         function resetForm() {
-            document.getElementById('rationCardApplication').reset();
+            document.getElementById('panApplication').reset();
             document.querySelectorAll('.va-highlighted-field').forEach(el => {
                 el.classList.remove('va-highlighted-field');
             });
