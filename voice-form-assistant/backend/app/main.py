@@ -23,6 +23,7 @@ from .api.http import router as http_router
 from .api.websocket import websocket_endpoint
 from .services.assemblyai_service import assemblyai_service
 from .services.session_manager import session_manager
+from .core.init import initialize_application, get_app_info
 
 # Configure logging
 logging.basicConfig(
@@ -41,15 +42,11 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     logger.info("Starting Voice Form Assistant...")
-    logger.info(f"STT Service: AssemblyAI (Cloud API)")
-    
-    # Verify AssemblyAI configuration
-    if settings.ASSEMBLYAI_API_KEY:
-        logger.info("AssemblyAI API key configured")
-        model_info = assemblyai_service.get_model_info()
-        logger.info(f"Supported languages: {', '.join(model_info['languages'])}")
-    else:
-        logger.warning("AssemblyAI API key not configured - transcription will fail")
+
+    # Initialize application (load config, field registry, validate settings)
+    init_success = initialize_application()
+    if not init_success:
+        logger.error("Application initialization failed - server may not function correctly")
 
     # Connect to Redis
     try:

@@ -13,6 +13,7 @@ from ..services.assemblyai_service import assemblyai_service, SUPPORTED_LANGUAGE
 from ..services.openrouter_client import openrouter_client
 from ..services.tts_service import tts_service
 from ..services.session_manager import session_manager
+from ..core.init import get_app_info
 
 logger = logging.getLogger(__name__)
 
@@ -92,16 +93,26 @@ async def get_info() -> InfoResponse:
     Get service information.
     Returns details about the API, configuration, and supported languages.
     """
+    # Get application info from initialization module (config-driven)
+    app_info = get_app_info()
+
     # Build languages dict
     languages = {
         "total_count": len(SUPPORTED_LANGUAGES),
         "languages": SUPPORTED_LANGUAGES,
         "codes": list(SUPPORTED_LANGUAGES.keys())
     }
-    
+
+    # Merge configuration from app_info with runtime status
+    configuration = {
+        **app_info["configuration"],
+        "assemblyai_configured": bool(settings.ASSEMBLYAI_API_KEY),
+        "debug": settings.DEBUG
+    }
+
     return InfoResponse(
-        name="Voice Form Assistant",
-        version="2.0.0",
+        name=app_info["name"],
+        version=app_info["version"],
         description="Voice-based form filling assistant for Indian government portals. "
                     "Cloud-based transcription via AssemblyAI with automatic language detection.",
         endpoints={
@@ -112,14 +123,7 @@ async def get_info() -> InfoResponse:
             "ready": "/ready",
             "static": "/static/*"
         },
-        configuration={
-            "stt_service": "AssemblyAI",
-            "assemblyai_configured": bool(settings.ASSEMBLYAI_API_KEY),
-            "default_language": settings.DEFAULT_LANGUAGE,
-            "openrouter_model": settings.OPENROUTER_MODEL,
-            "tts_engine": settings.TTS_ENGINE,
-            "debug": settings.DEBUG
-        },
+        configuration=configuration,
         supported_languages=languages
     )
 

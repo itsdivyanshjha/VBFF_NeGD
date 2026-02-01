@@ -190,7 +190,7 @@ NAME FIELDS:
 - Remove trailing punctuation (commas, periods)
 - Keep middle names/initials
 Examples:
-- "deviant, ja" → "Deviant Ja" ✓
+- "Divyansh, Jha" → "Divyansh Jha" ✓
 - "RAJESH KUMAR" → "Rajesh Kumar" ✓
 
 ═══════════════════════════════════════════════════════════
@@ -410,7 +410,7 @@ Extract the value, apply ALL transformations, and respond with JSON only."""
     async def generate_field_question(self, field: Dict[str, Any]) -> str:
         """
         DYNAMICALLY generate a question for any form field using LLM.
-        Works with ANY field - no hardcoding required.
+        Intelligently handles name fields and other field types with context-aware questions.
 
         Args:
             field: Field metadata from DOM (label, type, required, pattern, maxLength, options, etc.)
@@ -421,17 +421,19 @@ Extract the value, apply ALL transformations, and respond with JSON only."""
         # Build cache key from field characteristics
         field_label = field.get("label", "")
         field_type = field.get("field_type", field.get("type", "text"))
-        cache_key = f"{field_label}_{field_type}_{field.get('required', False)}"
+        has_options = bool(field.get("options"))
+        cache_key = f"{field_label}_{field_type}_{field.get('required', False)}_{has_options}"
 
         # Check cache first
         if cache_key in self._question_cache:
             return self._question_cache[cache_key]
 
-        # Build field context for LLM
+        # Build comprehensive field context for LLM
         field_info = []
         field_info.append(f"Label: {field_label}")
         field_info.append(f"HTML Type: {field.get('type', 'text')}")
         field_info.append(f"Detected Type: {field_type}")
+        field_info.append(f"Field ID/Name: {field.get('id', '') or field.get('name', '')}")
 
         if field.get("required"):
             field_info.append("Required: Yes")
@@ -447,45 +449,89 @@ Extract the value, apply ALL transformations, and respond with JSON only."""
 
         if field.get("options"):
             options_text = ", ".join([opt.get("label", opt.get("value", "")) for opt in field.get("options", [])[:5]])
-            field_info.append(f"Options: {options_text}")
+            field_info.append(f"Options Available: {options_text}")
+            field_info.append("NOTE: Do NOT include these options in your question - they will be added separately!")
 
-        prompt = f"""Generate a SHORT, NATURAL question to ask a user for this form field.
+        # Enhanced system prompt with specific instructions for name fields
+        system_prompt = """You are an expert at generating natural, conversational questions for form fields.
+Your task is to analyze the field metadata and generate a question that:
+1. Is natural and conversational (sounds friendly, not robotic)
+2. Reflects the actual context and relationship when dealing with name fields
+3. Is concise but complete (under 18 words)
+4. Gets to the point while remaining polite
+
+CRITICAL RULES:
+- For SELECT/RADIO fields: NEVER include the options in your question! Just ask for the field.
+  The system will add options separately.
+- For NAME FIELDS: Analyze the label to understand relationships (father, mother, spouse, etc.)
+- Keep questions CONCISE but NATURAL
+
+Generate questions that sound friendly and reflect the actual relationship context."""
+
+        user_prompt = f"""Generate a natural question for this form field:
 
 FIELD INFORMATION:
 {chr(10).join(field_info)}
 
-GUIDELINES:
-- Keep it conversational and friendly
-- For numeric fields (Aadhaar, phone), instruct user to say digits in groups (e.g., "four one two three, five six seven eight")
-- For dates, say they can speak naturally (e.g., "29 May 2003")
-- For select/radio fields, mention some options if helpful
-- Keep it under 25 words
-- Don't repeat the label verbatim - make it natural
+SPECIFIC GUIDELINES:
 
-Return ONLY the question text, nothing else."""
+NAME FIELDS:
+- Analyze the label to detect relationship context (father, mother, spouse, etc.)
+- Generate questions that reflect the relationship: "What is your father's name?" NOT "What is your father's name field?"
+- For full name fields, ask naturally: "What is your full name?" or "What's your name?"
+
+NUMERIC FIELDS (Aadhaar, Phone, PIN):
+- Be clear and friendly: "What is your 12-digit Aadhaar number?" or "Please tell me your mobile number"
+- NO lengthy instructions, but be polite
+
+DATE FIELDS:
+- Natural and clear: "What is your date of birth?" or "When were you born?"
+
+EMAIL FIELDS:
+- Simple and friendly: "What is your email address?"
+
+SELECT/RADIO FIELDS:
+- DO NOT list the options in your question - the system will add them separately
+- Just ask naturally: "Please choose your [field]" or "What is your [field]?"
+- Example: For "Gender" field, ask "What is your gender?" NOT "Your gender: Male, Female, Other?"
+
+ADDRESS FIELDS:
+- Clear: "What is your complete address?"
+
+GENERAL RULES:
+- Keep it under 18 words
+- Be natural and conversational (like talking to a person)
+- Be polite and friendly
+- Remove any parenthetical hints from labels (e.g., "(as per Aadhaar)") when asking
+- Sound helpful, not robotic
+
+Return ONLY the question text, nothing else. No quotes, no prefixes."""
 
         try:
             response = await self._make_request(
-                messages=[{"role": "user", "content": prompt}],
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
                 temperature=0.3  # Low temperature for consistent questions
             )
 
             question = response.strip().strip('"').strip("'")
 
             # Clean up any extra formatting
-            question = re.sub(r'^(Question:|Ask:)\s*', '', question, flags=re.IGNORECASE)
+            question = re.sub(r'^(Question:|Ask:|Q:)\s*', '', question, flags=re.IGNORECASE)
+            question = re.sub(r'^\d+[\.\)]\s*', '', question)  # Remove numbered prefixes
 
             # Cache it
             self._question_cache[cache_key] = question
 
-            logger.info(f"[generate_field_question] Generated: '{question}' for {field_type} field")
+            logger.info(f"[generate_field_question] Generated: '{question}' for {field_type} field (label: '{field_label}')")
             return question
 
         except Exception as e:
-            logger.error(f"Failed to generate question for field, using fallback: {e}")
-            # Fallback to simple label-based question
-            clean_label = re.sub(r'\s*\([^)]*\)', '', field_label).strip()
-            return f"What is your {clean_label.lower()}?"
+            logger.error(f"CRITICAL: Failed to generate question for field '{field_label}': {type(e).__name__}: {str(e)}")
+            # Return error message so you know the LLM failed
+            return f"ERROR: Failed to generate question for {field_label}. LLM timeout or error."
 
     async def generate_response(
         self,
@@ -539,8 +585,8 @@ Return ONLY the question text, nothing else."""
 
     def _greeting_prompt(self, **kwargs) -> tuple:
         system = """You are a friendly voice assistant helping users fill government forms.
-Generate a brief, warm greeting and explain you'll help fill the form step by step.
-Keep it under 30 words. Be professional but approachable."""
+Generate a brief, warm greeting. Say hello and that you'll help fill the form.
+Keep it under 20 words. Be friendly and professional."""
 
         form_name = kwargs.get("form_name", "the form")
         user = f"Generate a greeting for helping fill: {form_name}"
@@ -548,68 +594,61 @@ Keep it under 30 words. Be professional but approachable."""
         return system, user
 
     def _ask_field_prompt(self, **kwargs) -> tuple:
+        """
+        Generate prompt for asking about a field using LLM.
+        This method is used as a fallback when generate_field_question() is not available.
+        Uses LLM to intelligently handle name fields and other field types.
+        """
         field_label = kwargs.get("field_label", "this field")
         field_type = kwargs.get("field_type", "text")
-        examples = kwargs.get("examples", "")
+        field_id = kwargs.get("field_id", "")
+        pattern = kwargs.get("pattern", "")
+        max_length = kwargs.get("max_length")
+        options = kwargs.get("options", [])
 
-        # Map field types to natural language descriptions
-        # DO NOT use the original label - it contains confusing text
-        field_description = {
-            "name": "full name",
-            "fullname": "full name",
-            "aadhaar": "Aadhaar number",
-            "pan": "PAN number",
-            "mobile": "mobile number",
-            "phone": "phone number",
-            "tel": "phone number",
-            "email": "email address",
-            "dob": "date of birth",
-            "date": "date",
-            "address": "address",
-            "pincode": "PIN code",
-            "zip": "PIN code",
-            "state": "state",
-            "city": "city"
-        }.get(field_type.lower())
-        
-        # If no mapping, clean the label
-        if not field_description:
-            clean_label = re.sub(r'\s*\([^)]*\)', '', field_label).strip()
-            field_description = clean_label.lower()
+        # Build field context for LLM
+        field_info_parts = [f"Label: {field_label}", f"Type: {field_type}"]
+        if field_id:
+            field_info_parts.append(f"Field ID: {field_id}")
+        if pattern:
+            field_info_parts.append(f"Pattern: {pattern}")
+        if max_length:
+            field_info_parts.append(f"Max Length: {max_length}")
+        if options:
+            options_text = ", ".join([str(opt) for opt in options[:5]])
+            field_info_parts.append(f"Options: {options_text}")
 
-        # Generate questions directly based on field type - NO LLM NEEDED
-        questions = {
-            "full name": "What is your full name?",
-            "aadhaar number": "What is your 12-digit Aadhaar number?",
-            "pan number": "What is your PAN number?",
-            "mobile number": "What is your mobile number?",
-            "phone number": "What is your phone number?",
-            "email address": "What is your email address?",
-            "date of birth": "What is your date of birth?",
-            "date": "What is the date?",
-            "address": "What is your address?",
-            "pin code": "What is your PIN code?",
-            "state": "Which state do you live in?",
-            "city": "Which city do you live in?"
-        }
-        
-        # Use predefined question or generate simple one
-        direct_question = questions.get(field_description, f"What is your {field_description}?")
-        
-        # DEBUG
-        logger.info(f"[ask_field] Type: '{field_type}' → Description: '{field_description}' → Question: '{direct_question}'")
-        
-        # Return the direct question WITHOUT using LLM
-        # This prevents ANY possibility of confusion
-        system = "Return the exact question provided."
-        user = f"Question: {direct_question}"
+        system = """You are an expert at generating natural, conversational questions for form fields.
+Analyze the field information and generate a question that:
+1. Is natural and conversational (not robotic)
+2. For NAME FIELDS: Carefully analyze the label to detect relationship context:
+   - "Father's Name" / "Father Name" → Ask "What is your father's name?"
+   - "Mother's Name" / "Mother Name" → Ask "What is your mother's name?"
+   - "Spouse Name" / "Husband's Name" / "Wife's Name" → Ask "What is your spouse's name?"
+   - "Full Name" / "Name" → Ask "What is your full name?" or "What's your name?"
+   - Look for keywords: father, mother, spouse, husband, wife, guardian, parent
+3. For numeric fields: Provide helpful instructions about digit grouping
+4. For dates: Encourage natural speech format
+5. Keep it under 25 words and sound friendly
+
+Generate ONLY the question text, nothing else."""
+
+        user = f"""Generate a natural question for this form field:
+
+{chr(10).join(field_info_parts)}
+
+IMPORTANT: For name fields, analyze the label carefully to detect if it's asking about:
+- The user themselves (Full Name, Name)
+- A relative (Father's Name, Mother's Name, Spouse Name)
+
+Generate a question that reflects the actual relationship context. Return ONLY the question text."""
 
         return system, user
 
     def _confirm_value_prompt(self, **kwargs) -> tuple:
         system = """You are a voice assistant confirming a form field value.
-Generate a brief confirmation question that includes the value.
-Keep it under 25 words. Be clear and natural."""
+Generate a brief, natural confirmation question that includes the value.
+Keep it under 15 words. Be friendly: "I heard [value]. Is that correct?" or "You said [value], is that right?"."""
 
         field_label = kwargs.get("field_label", "the field")
         value = kwargs.get("value", "")
@@ -620,8 +659,8 @@ Keep it under 25 words. Be clear and natural."""
 
     def _validation_error_prompt(self, **kwargs) -> tuple:
         system = """You are a voice assistant explaining a validation error.
-Explain the error simply and ask user to provide correct value.
-Keep it under 30 words. Be helpful, not critical."""
+Be brief but helpful - explain what's wrong and ask to try again.
+Keep it under 20 words. Be friendly and encouraging."""
 
         field_label = kwargs.get("field_label", "the field")
         error = kwargs.get("error", "Invalid value")
@@ -632,8 +671,8 @@ Keep it under 30 words. Be helpful, not critical."""
 
     def _next_field_prompt(self, **kwargs) -> tuple:
         system = """You are a voice assistant moving to the next form field.
-Generate a brief transition acknowledging the previous field and asking for the next.
-Keep it under 25 words."""
+Generate a brief, friendly transition. Acknowledge and move to next field.
+Keep it under 12 words. Be natural: "Got it. Next..." or "Okay, now..."."""
 
         previous_field = kwargs.get("previous_field", "")
         next_field = kwargs.get("next_field", "")
@@ -644,8 +683,8 @@ Keep it under 25 words."""
 
     def _completion_prompt(self, **kwargs) -> tuple:
         system = """You are a voice assistant that has finished helping fill a form.
-Generate a brief completion message confirming all fields are filled.
-Keep it under 30 words. Be congratulatory."""
+Generate a brief, congratulatory completion message.
+Keep it under 18 words. Be friendly and positive."""
 
         form_name = kwargs.get("form_name", "the form")
         field_count = kwargs.get("field_count", 0)
@@ -656,8 +695,8 @@ Keep it under 30 words. Be congratulatory."""
 
     def _error_prompt(self, **kwargs) -> tuple:
         system = """You are a voice assistant handling an error.
-Apologize briefly and ask user to try again.
-Keep it under 20 words."""
+Be brief but polite - apologize and ask to try again.
+Keep it under 15 words. Be friendly and reassuring."""
 
         error = kwargs.get("error", "Something went wrong")
         user = f"Handle this error: {error}"
@@ -666,8 +705,8 @@ Keep it under 20 words."""
 
     def _repeat_prompt(self, **kwargs) -> tuple:
         system = """You are a voice assistant asking user to repeat.
-Ask them to repeat what they said, politely.
-Keep it under 15 words."""
+Be brief but polite - ask them to repeat what they said.
+Keep it under 12 words. Be friendly."""
 
         user = "Ask user to repeat what they said"
         return system, user
@@ -678,26 +717,22 @@ Keep it under 15 words."""
         return system, user
 
     def _fallback_response(self, action: str, **kwargs) -> str:
-        """Fallback responses when LLM fails."""
-        # Clean field labels for fallback responses too
-        field_label = kwargs.get('field_label', 'answer')
-        clean_label = re.sub(r'\s*\([^)]*\)', '', field_label).strip().lower()
-        
-        # Clean next_field label (can't use regex in f-string directly)
-        next_field = kwargs.get('next_field', 'next answer')
-        clean_next_field = re.sub(r'\s*\([^)]*\)', '', next_field).strip().lower()
+        """Fallback responses when LLM fails - returns error messages for debugging."""
+        field_label = kwargs.get('field_label', 'field')
+        value = kwargs.get('value', 'value')
+        error = kwargs.get('error', 'error')
         
         fallbacks = {
-            "greeting": "Hello! I'll help you fill this form. Let's start with the first field.",
-            "ask_field": f"Please tell me your {clean_label}.",
-            "confirm_value": f"I heard {kwargs.get('value', '')}. Is that correct?",
-            "validation_error": f"That doesn't seem right. Please try again.",
-            "next_field": f"Great! Now, what's your {clean_next_field}?",
-            "completion": "All done! Your form is now complete.",
-            "error": "Sorry, something went wrong. Please try again.",
-            "repeat": "I didn't catch that. Could you please repeat?"
+            "greeting": "ERROR: LLM failed to generate greeting. Check OpenRouter API.",
+            "ask_field": f"ERROR: LLM failed to generate question for {field_label}. Check OpenRouter API.",
+            "confirm_value": f"ERROR: LLM failed to generate confirmation for {value}. Check OpenRouter API.",
+            "validation_error": f"ERROR: LLM failed to generate validation error for {error}. Check OpenRouter API.",
+            "next_field": f"ERROR: LLM failed to generate transition. Check OpenRouter API.",
+            "completion": "ERROR: LLM failed to generate completion message. Check OpenRouter API.",
+            "error": "ERROR: LLM failed to generate error message. Check OpenRouter API.",
+            "repeat": "ERROR: LLM failed to generate repeat request. Check OpenRouter API."
         }
-        return fallbacks.get(action, "How can I help you?")
+        return fallbacks.get(action, f"ERROR: LLM failed for action '{action}'. Check OpenRouter API.")
 
     def get_model_info(self) -> Dict[str, str]:
         """Get information about the configured model."""

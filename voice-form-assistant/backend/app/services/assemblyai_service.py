@@ -15,6 +15,7 @@ import tempfile
 import os
 import wave
 import time
+import re
 from typing import Optional, Tuple, Dict, Any, List
 from dataclasses import dataclass
 import numpy as np
@@ -126,59 +127,121 @@ class AssemblyAIService:
             "content-type": "application/json"
         }
 
+    def _parse_pattern_character_classes(self, pattern: str) -> Dict[str, bool]:
+        """
+        Parse regex pattern to detect what characters are allowed.
+
+        Args:
+            pattern: HTML pattern attribute (e.g., "\\d{12}", "[A-Z]{5}\\d{4}[A-Z]")
+
+        Returns:
+            Dict with has_digits, has_alpha, has_uppercase, has_lowercase flags
+        """
+        if not pattern:
+            return {
+                "has_digits": False,
+                "has_alpha": False,
+                "has_uppercase": False,
+                "has_lowercase": False
+            }
+
+        # Detect digit patterns: \d, [0-9], [0-9a-z], etc.
+        has_digits = bool(re.search(r'\\d|\[0-9\]|\[.*?0-9.*?\]', pattern))
+
+        # Detect uppercase letter patterns: [A-Z], [A-Za-z], etc.
+        has_uppercase = bool(re.search(r'\[A-Z\]|\[.*?A-Z.*?\]', pattern))
+
+        # Detect lowercase letter patterns: [a-z], [A-Za-z], etc.
+        has_lowercase = bool(re.search(r'\[a-z\]|\[.*?a-z.*?\]', pattern))
+
+        has_alpha = has_uppercase or has_lowercase
+
+        return {
+            "has_digits": has_digits,
+            "has_alpha": has_alpha,
+            "has_uppercase": has_uppercase,
+            "has_lowercase": has_lowercase
+        }
+
     def _build_field_aware_config(self, field_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Build AssemblyAI configuration optimized for specific field type.
-        
-        This is the key to scalable, zero-hardcoding transcription:
-        - Maps HTML input types to optimal ASR settings
-        - Works with ANY form - no per-form configuration needed
-        - Eliminates 80% of post-processing normalization
-        
+        Build ASR config by parsing form field attributes.
+
+        Scalable approach: Parse the form's validation schema (pattern, type, inputmode)
+        to dynamically configure word_boost. Works for ANY form - no country-specific configs.
+
         Args:
-            field_info: Dict with 'type', 'field_type', 'pattern', 'maxLength', etc.
-        
+            field_info: Dict with 'type', 'pattern', 'inputmode', etc.
+
         Returns:
             Dict with AssemblyAI configuration parameters
         """
         if not field_info:
             # Default config for general text
-            return FIELD_TYPE_ASR_CONFIGS["text"].copy()
-        
-        html_type = field_info.get("type", "text").lower()
-        field_type = field_info.get("field_type", "").lower()
-        
-        # Priority 1: Use HTML input type (most reliable)
-        if html_type in FIELD_TYPE_ASR_CONFIGS:
-            config = FIELD_TYPE_ASR_CONFIGS[html_type].copy()
-            logger.info(f"Using ASR config for HTML type: {html_type}")
-            return config
-        
-        # Priority 2: Use detected field_type (from widget's analysis)
-        if field_type in FIELD_TYPE_ASR_CONFIGS:
-            config = FIELD_TYPE_ASR_CONFIGS[field_type].copy()
-            logger.info(f"Using ASR config for field_type: {field_type}")
-            return config
-        
-        # Priority 3: Infer from field characteristics
-        pattern = field_info.get("pattern", "")
-        max_length = field_info.get("maxLength")
-        
-        # Numeric patterns → use number config
-        if pattern and ("\\d{" in pattern or "[0-9]{" in pattern):
-            config = FIELD_TYPE_ASR_CONFIGS["number"].copy()
-            logger.info(f"Using ASR config for numeric pattern: {pattern}")
-            return config
-        
-        # Common numeric lengths → use number config
-        if max_length in [6, 10, 12]:  # PIN, mobile, Aadhaar
-            config = FIELD_TYPE_ASR_CONFIGS["number"].copy()
-            logger.info(f"Using ASR config for numeric maxLength: {max_length}")
-            return config
-        
-        # Default to text
-        logger.info("Using default text ASR config")
-        return FIELD_TYPE_ASR_CONFIGS["text"].copy()
+            return {
+                'speech_model': 'best',
+                'punctuate': True,
+                'format_text': True
+            }
+
+        # Start with base config
+        config = {
+            'speech_model': 'best',
+            'punctuate': False,
+            'format_text': False,  # CRITICAL: Never reformat structured input
+            'boost_param': 'default'
+        }
+        word_boost = []
+
+        # Get form attributes
+        html_type = field_info.get('type', '').lower()
+        inputmode = field_info.get('inputmode', '').lower()
+        pattern = field_info.get('pattern', '')
+
+        # Parse pattern to detect character classes
+        char_classes = self._parse_pattern_character_classes(pattern)
+
+        # Detect if this is a structured numeric/alphanumeric field
+        is_numeric = (
+            html_type in ['tel', 'number'] or
+            inputmode == 'numeric' or
+            char_classes['has_digits']
+        )
+
+        is_alpha = char_classes['has_alpha']
+
+        # Build word_boost based on what the field accepts
+        if is_numeric:
+            # Boost digits (both symbol and word forms)
+            word_boost.extend([
+                "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+                "zero", "one", "two", "three", "four", "five",
+                "six", "seven", "eight", "nine"
+            ])
+            config['boost_param'] = 'high'
+            logger.info("Applied digit boosting (detected from form schema)")
+
+        if is_alpha:
+            # Boost letters (uppercase common for government IDs)
+            if char_classes['has_uppercase']:
+                word_boost.extend([chr(i) for i in range(ord('A'), ord('Z') + 1)])
+            if char_classes['has_lowercase']:
+                word_boost.extend([chr(i) for i in range(ord('a'), ord('z') + 1)])
+            config['boost_param'] = 'high'
+            logger.info("Applied letter boosting (detected from form schema)")
+
+        # If no structured pattern detected, treat as free text
+        if not is_numeric and not is_alpha:
+            config['punctuate'] = True
+            config['format_text'] = True
+            logger.info("Treating as free text (no structured pattern)")
+
+        # Set word_boost if we have any
+        if word_boost:
+            config['word_boost'] = word_boost
+            logger.info(f"Built word_boost with {len(word_boost)} terms")
+
+        return config
 
     def _detect_audio_format(self, audio_bytes: bytes) -> Dict[str, Any]:
         """

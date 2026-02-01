@@ -115,11 +115,9 @@ def build_ask_question(field: Dict[str, Any]) -> str:
 
 
 def build_next_field_transition(previous_label: str, next_label: str) -> str:
-    prev = _clean_label(previous_label or "")
+    """Generate a brief transition between fields."""
     nxt = _clean_label(next_label or "")
-    if prev and nxt:
-        return f"Got it. Next, {nxt}."
     if nxt:
-        return f"Next, {nxt}."
+        return f"Got it. Next, {nxt}."
     return "Let's continue to the next field."
 

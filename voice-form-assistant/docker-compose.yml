@@ -23,7 +23,7 @@ services:
       
       # AssemblyAI Configuration (set via .env file)
       - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
-      - ASSEMBLYAI_TIMEOUT=60
+      - ASSEMBLYAI_TIMEOUT=120
       - ASSEMBLYAI_POLLING_INTERVAL=0.5
       - ASSEMBLYAI_MAX_RETRIES=3
       

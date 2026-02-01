@@ -12,7 +12,6 @@ import subprocess
 from typing import List
 import numpy as np
 from pydub import AudioSegment
-from scipy import signal
 
 from ..config import settings
 
@@ -94,36 +93,6 @@ class AudioProcessor:
             return samples.astype(np.float32, copy=False)
 
         return await loop.run_in_executor(None, process)
-
-    async def get_audio_duration(self, audio_data: np.ndarray) -> float:
-        """
-        Get duration of audio in seconds.
-
-        Args:
-            audio_data: Numpy array of audio samples
-
-        Returns:
-            Duration in seconds
-        """
-        if len(audio_data) == 0:
-            return 0.0
-        return len(audio_data) / self.target_sample_rate
-
-    def is_valid_audio(self, base64_audio: str) -> bool:
-        """
-        Check if base64 string is valid audio data.
-
-        Args:
-            base64_audio: Base64 encoded audio
-
-        Returns:
-            True if valid, False otherwise
-        """
-        try:
-            data = base64.b64decode(base64_audio)
-            return len(data) > 100  # Minimum reasonable audio size
-        except Exception:
-            return False
 
     def _decode_with_ffmpeg(self, data: bytes) -> np.ndarray | None:
         """Decode audio to float32 mono PCM at target sample rate using FFmpeg."""

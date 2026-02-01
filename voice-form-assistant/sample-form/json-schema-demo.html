@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON Schema Form - Voice Assistant Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #4CAF50;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin-bottom: 30px;
+            border-radius: 4px;
+        }
+
+        .info-box strong {
+            color: #1976D2;
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .info-box ul {
+            margin-left: 20px;
+            color: #555;
+            font-size: 14px;
+        }
+
+        .info-box li {
+            margin-bottom: 5px;
+        }
+
+        #rjsf-form {
+            margin-top: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .required {
+            color: #e53935;
+            margin-left: 4px;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        input[type="tel"],
+        input[type="date"],
+        input[type="number"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .field-description {
+            font-size: 12px;
+            color: #757575;
+            margin-top: 4px;
+        }
+
+        button[type="submit"] {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 32px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        button[type="submit"]:hover {
+            transform: translateY(-2px);
+        }
+
+        .va-highlighted-field {
+            border-color: #4CAF50 !important;
+            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.2);
+        }
+    </style>
+
+    <!-- React JSON Schema Form library -->
+    <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@rjsf/core@4.2.0/dist/react-jsonschema-form.js"></script>
+</head>
+<body>
+    <div class="container">
+        <span class="badge">🎤 JSON Schema + Voice Assistant</span>
+        <h1>Aadhaar Enrollment Form</h1>
+        <p class="subtitle">Voice-enabled JSON Schema form demo</p>
+
+        <div class="info-box">
+            <strong>🎯 This form uses JSON Schema, not HTML!</strong>
+            <ul>
+                <li>Form defined in JavaScript as JSON Schema</li>
+                <li>Works with react-jsonschema-form, JSON Forms, Form.io</li>
+                <li>Voice Assistant parses JSON Schema automatically</li>
+                <li>No HTML form scanning needed!</li>
+            </ul>
+        </div>
+
+        <!-- Form will be rendered here by react-jsonschema-form -->
+        <div id="rjsf-form"></div>
+    </div>
+
+    <script>
+        // JSON Schema definition (react-jsonschema-form format)
+        window.voiceFormSchema = {
+            title: "Aadhaar Enrollment Form",
+            description: "Fill in your details for Aadhaar enrollment",
+            type: "object",
+            required: ["fullName", "aadhaar", "mobile", "email", "dateOfBirth", "gender", "state"],
+            properties: {
+                fullName: {
+                    type: "string",
+                    title: "Full Name",
+                    description: "Enter your full name as per government records",
+                    minLength: 2
+                },
+                aadhaar: {
+                    type: "string",
+                    title: "Aadhaar Number",
+                    description: "12-digit Aadhaar number",
+                    pattern: "^[2-9]\\d{11}$",
+                    maxLength: 12
+                },
+                mobile: {
+                    type: "string",
+                    title: "Mobile Number",
+                    description: "10-digit mobile number",
+                    pattern: "^[6-9]\\d{9}$",
+                    maxLength: 10,
+                    format: "tel"
+                },
+                email: {
+                    type: "string",
+                    title: "Email Address",
+                    format: "email"
+                },
+                dateOfBirth: {
+                    type: "string",
+                    title: "Date of Birth",
+                    format: "date"
+                },
+                gender: {
+                    type: "string",
+                    title: "Gender",
+                    enum: ["Male", "Female", "Other"]
+                },
+                address: {
+                    type: "string",
+                    title: "Residential Address",
+                    description: "Enter your full address"
+                },
+                pincode: {
+                    type: "string",
+                    title: "PIN Code",
+                    pattern: "^\\d{6}$",
+                    maxLength: 6
+                },
+                state: {
+                    type: "string",
+                    title: "State",
+                    enum: [
+                        "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar",
+                        "Chhattisgarh", "Goa", "Gujarat", "Haryana", "Himachal Pradesh",
+                        "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra",
+                        "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha",
+                        "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana",
+                        "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+                        "Delhi", "Chandigarh", "Puducherry"
+                    ]
+                }
+            },
+            uiSchema: {
+                "ui:order": [
+                    "fullName", "aadhaar", "mobile", "email",
+                    "dateOfBirth", "gender", "address", "pincode", "state"
+                ],
+                fullName: {
+                    "ui:placeholder": "John Doe"
+                },
+                aadhaar: {
+                    "ui:placeholder": "123456789012",
+                    "ui:widget": "tel"
+                },
+                mobile: {
+                    "ui:placeholder": "9876543210",
+                    "ui:widget": "tel"
+                },
+                address: {
+                    "ui:widget": "textarea",
+                    "ui:placeholder": "123 Main Street, City"
+                },
+                pincode: {
+                    "ui:placeholder": "560001"
+                }
+            }
+        };
+
+        // Render the form using react-jsonschema-form
+        const Form = JSONSchemaForm.default;
+
+        function onSubmit({formData}) {
+            console.log("Form submitted:", formData);
+            alert("Form submitted successfully! Check console for data.");
+        }
+
+        ReactDOM.render(
+            React.createElement(Form, {
+                schema: window.voiceFormSchema,
+                uiSchema: window.voiceFormSchema.uiSchema,
+                onSubmit: onSubmit
+            }),
+            document.getElementById('rjsf-form')
+        );
+    </script>
+
+    <!-- Load Voice Assistant Widget -->
+    <script src="http://localhost:8000/static/embed.js"></script>
+</body>
+</html>

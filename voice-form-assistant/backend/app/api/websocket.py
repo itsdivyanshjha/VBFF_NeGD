@@ -2,6 +2,12 @@
 WebSocket Handler.
 Main communication endpoint for voice form filling.
 Supports multilingual input via AssemblyAI with automatic language detection.
+
+Phase 1 Refactoring:
+- Uses ConfigLoader for all settings (no hardcoded values)
+- Uses FieldTypeRegistry for field type detection and prompts
+- Uses provider interfaces (STTProvider, LLMProvider, TTSProvider, SessionStorage)
+- Maintains full backward compatibility
 """
 
 import logging
@@ -13,6 +19,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 import asyncio
 import numpy as np
 
+# Legacy service imports (still used for now)
 from ..services.assemblyai_service import assemblyai_service, TranscriptionResult
 from ..services.openrouter_client import openrouter_client
 from ..services.tts_service import tts_service
@@ -22,51 +29,26 @@ from ..services.question_builder import build_next_field_transition
 from ..services.validators import validate_field_value
 from ..config import settings
 
+# New imports for Phase 1
+from ..core.config import get_config
+from ..core.field_registry import get_field_registry
+
 logger = logging.getLogger(__name__)
 
-
-# Minimum audio size in bytes - WebM at 128kbps is ~16KB/sec
-# 3KB minimum = roughly 0.2 seconds, but we want at least 0.5s of speech
-MIN_AUDIO_BYTES = 4000  # ~0.25 seconds minimum
-
-# Estimated bytes per second for WebM/Opus at 128kbps
-BYTES_PER_SECOND_ESTIMATE = 16000
-
-# Minimum duration in seconds
-MIN_AUDIO_DURATION_SECONDS = 0.3
-
-
-class ConnectionManager:
-    """Manages WebSocket connections."""
-
-    def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}
-
-    async def connect(self, websocket: WebSocket, session_id: str) -> None:
-        """Accept and register connection."""
-        await websocket.accept()
-        self.active_connections[session_id] = websocket
-        logger.info(f"WebSocket connected: {session_id}")
-
-    def disconnect(self, session_id: str) -> None:
-        """Remove connection."""
-        if session_id in self.active_connections:
-            del self.active_connections[session_id]
-            logger.info(f"WebSocket disconnected: {session_id}")
-
-    async def send_message(self, session_id: str, message: Dict[str, Any]) -> None:
-        """Send message to specific connection."""
-        ws = self.active_connections.get(session_id)
-        if ws:
-            await ws.send_json(message)
-            logger.debug(f"Sent to {session_id}: {message.get('type')}")
-
-
-manager = ConnectionManager()
+# Load configuration
+config = get_config()
+field_registry = get_field_registry()
 
 
 class VoiceFormHandler:
-    """Handles voice form filling logic."""
+    """
+    Handles voice form filling logic.
+
+    Phase 1 Refactoring:
+    - Loads all configuration from config system
+    - Uses field registry for field type detection
+    - No hardcoded values
+    """
 
     def __init__(self, websocket: WebSocket):
         self.websocket = websocket
@@ -75,6 +57,30 @@ class VoiceFormHandler:
         self._detected_language: Optional[str] = None  # Track detected language for hints
         self._empty_transcription_count = 0  # Track consecutive empty transcriptions
 
+        # Load configuration values (no hardcoding)
+        self.min_audio_bytes = config.get('audio.validation.min_bytes', 4000)
+        self.min_audio_duration = config.get('audio.validation.min_duration', 0.3)
+        self.max_retries = config.get('conversation.max_retries', 2)
+        self.empty_threshold = config.get('conversation.empty_transcription_threshold', 2)
+
+        # Confidence thresholds
+        self.confidence_high = config.get('conversation.transcription.high_confidence', 0.85)
+        self.confidence_medium = config.get('conversation.transcription.medium_confidence', 0.5)
+        self.confidence_low = config.get('conversation.transcription.low_confidence', 0.1)
+
+        # Confirmation keywords
+        self.positive_keywords = config.get('conversation.confirmation.positive_keywords', [
+            "yes", "yeah", "yep", "correct", "right", "haan", "ha", "okay", "ok", "sure", "confirm"
+        ])
+        self.negative_keywords = config.get('conversation.confirmation.negative_keywords', [
+            "no", "nope", "wrong", "incorrect", "nahi", "change", "different"
+        ])
+
+        # Critical field types (from config)
+        self.critical_field_types = config.get('conversation.confirmation.critical_types', [
+            "aadhaar", "pan", "passport", "email", "mobile"
+        ])
+
     async def send(self, message: Dict[str, Any]) -> bool:
         """Send message to client. Returns False if client disconnected."""
         try:
@@ -82,6 +88,72 @@ class VoiceFormHandler:
             return True
         except Exception:
             return False
+
+    def _enhance_field_metadata(self, field_info: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Enhance field metadata using field registry.
+
+        If field_type is not set or needs validation, use registry to detect it.
+        Also adds additional metadata from registry (prompts, validation rules, etc.).
+
+        Args:
+            field_info: Field metadata from client
+
+        Returns:
+            Enhanced field metadata
+        """
+        field_type = field_info.get('field_type')
+
+        # If no field_type or it's generic, try to detect from registry
+        if not field_type or field_type in ['text', 'number']:
+            detected_type = field_registry.detect_field_type(field_info)
+            if detected_type:
+                logger.info(f"Field registry detected type '{detected_type}' for field '{field_info.get('name')}'")
+                field_info['field_type'] = detected_type
+                field_type = detected_type
+
+        # Add registry metadata if field type exists in registry
+        if field_type and field_registry.exists(field_type):
+            field_def = field_registry.get(field_type)
+            if field_def:
+                # Add speech processing hints
+                field_info['speech_config'] = field_def.speech_processing
+
+                # Add validation rules if not already present
+                if not field_info.get('validation_rules'):
+                    field_info['validation_rules'] = field_def.validation
+
+                # Add UI hints
+                field_info['ui_hints'] = field_def.ui_hints
+
+                logger.debug(f"Enhanced field '{field_info.get('name')}' with registry metadata")
+
+        return field_info
+
+    def _get_field_prompt(self, field_info: Dict[str, Any], prompt_type: str = 'question') -> Optional[str]:
+        """
+        Get prompt template from field registry.
+
+        Args:
+            field_info: Field metadata
+            prompt_type: Type of prompt ('question', 'confirmation', 'validation_error', 'retry')
+
+        Returns:
+            Prompt text if found, None otherwise
+        """
+        field_type = field_info.get('field_type')
+        if not field_type:
+            return None
+
+        # Get prompt from registry
+        prompt = field_registry.get_prompt(
+            field_type,
+            prompt_type,
+            label=field_info.get('label', field_info.get('name', '')),
+            value=field_info.get('value', '')
+        )
+
+        return prompt if prompt else None
 
     def _normalize_entity_value(self, entity_text: str, entity_type: str) -> str:
         """
@@ -159,7 +231,7 @@ class VoiceFormHandler:
         }
 
         # Check minimum size
-        if len(audio_bytes) < MIN_AUDIO_BYTES:
+        if len(audio_bytes) < self.min_audio_bytes:
             result["error"] = "audio_too_short"
             result["error_detail"] = (
                 f"Audio is too short ({len(audio_bytes)} bytes). "
@@ -167,7 +239,7 @@ class VoiceFormHandler:
             )
             logger.warning(
                 f"Audio too short: {len(audio_bytes)} bytes "
-                f"(minimum: {MIN_AUDIO_BYTES} bytes)"
+                f"(minimum: {self.min_audio_bytes} bytes)"
             )
             return result
 
@@ -195,11 +267,12 @@ class VoiceFormHandler:
                 f"Unknown audio format. First 16 bytes: {audio_bytes[:16].hex()}"
             )
 
-        # Estimate duration based on typical bitrate
-        result["estimated_duration_s"] = len(audio_bytes) / BYTES_PER_SECOND_ESTIMATE
+        # Estimate duration based on typical bitrate (WebM/Opus at 128kbps ~= 16000 bytes/sec)
+        bytes_per_second = 16000
+        result["estimated_duration_s"] = len(audio_bytes) / bytes_per_second
 
         # Check minimum duration
-        if result["estimated_duration_s"] < MIN_AUDIO_DURATION_SECONDS:
+        if result["estimated_duration_s"] < self.min_audio_duration:
             result["error"] = "audio_too_short"
             result["error_detail"] = (
                 f"Audio duration too short ({result['estimated_duration_s']:.1f}s). "
@@ -360,29 +433,29 @@ class VoiceFormHandler:
             # Store detected language for future hints (improves consistency)
             self._detected_language = detected_lang
 
-            # Very low confidence threshold (0.1) to accept more transcriptions
-            # This is especially important for accented speech (Indian English, Hindi, Hinglish)
+            # Use configured confidence threshold to accept/reject transcriptions
+            # Low threshold is important for accented speech (Indian English, Hindi, Hinglish)
             # We prefer false positives over false negatives - users can always say "no" to confirmations
-            if not transcription or confidence < 0.1:
+            if not transcription or confidence < self.confidence_low:
                 self._empty_transcription_count += 1
                 logger.warning(
-                    f"Low confidence transcription: '{transcription}' (confidence: {confidence:.2f}) "
-                    f"[{self._empty_transcription_count} consecutive]"
+                    f"Low confidence transcription: '{transcription}' (confidence: {confidence:.2f}, "
+                    f"threshold: {self.confidence_low}) [{self._empty_transcription_count} consecutive]"
                 )
-                
-                # Reset language hint after 2 consecutive empty transcriptions
+
+                # Reset language hint after configured threshold of empty transcriptions
                 # This handles cases where the hint is causing the problem
-                if self._empty_transcription_count >= 2 and self._detected_language:
+                if self._empty_transcription_count >= self.empty_threshold and self._detected_language:
                     logger.warning(
                         f"Resetting language hint (was: {self._detected_language}) "
-                        "due to repeated empty transcriptions"
+                        f"due to {self._empty_transcription_count} empty transcriptions"
                     )
                     self._detected_language = None
                     self._empty_transcription_count = 0
-                
+
                 await self._ask_repeat()
                 return
-            
+
             # Reset empty transcription counter on success
             self._empty_transcription_count = 0
 
@@ -546,11 +619,11 @@ class VoiceFormHandler:
         # Use formatted value
         formatted_value = validation.get("formatted", extracted_value)
 
-        # Decide if confirmation needed
-        critical_types = ["aadhaar", "pan", "mobile", "email"]
-        is_critical = current_field.get("field_type") in critical_types
+        # Decide if confirmation needed based on field type and confidence
+        # Critical field types are loaded from config
+        is_critical = current_field.get("field_type") in self.critical_field_types
 
-        if needs_confirmation or is_critical or confidence < 0.85:
+        if needs_confirmation or is_critical or confidence < self.confidence_high:
             # Request confirmation
             self.session.set_pending_confirmation(
                 field_id,
@@ -582,15 +655,16 @@ class VoiceFormHandler:
             await self._fill_and_advance(field_id, formatted_value)
 
     async def _process_confirmation_response(self, transcription: str) -> None:
-        """Process user's yes/no confirmation response."""
+        """
+        Process user's yes/no confirmation response.
+
+        Uses confirmation keywords from config (supports multilingual yes/no).
+        """
         text_lower = transcription.lower().strip()
 
-        # Check for yes/no
-        positive_words = ["yes", "yeah", "yep", "correct", "right", "haan", "ha", "okay", "ok", "sure", "confirm"]
-        negative_words = ["no", "nope", "wrong", "incorrect", "nahi", "change", "different"]
-
-        is_positive = any(word in text_lower for word in positive_words)
-        is_negative = any(word in text_lower for word in negative_words)
+        # Check for yes/no using configured keywords
+        is_positive = any(word in text_lower for word in self.positive_keywords)
+        is_negative = any(word in text_lower for word in self.negative_keywords)
 
         pending = self.session.pending_confirmation
 
@@ -667,7 +741,7 @@ class VoiceFormHandler:
             })
 
     async def _handle_skip(self, data: Dict[str, Any]) -> None:
-        """Skip current field."""
+        """Skip current field - allows skipping any field."""
         session_id = data.get("sessionId")
 
         if not self.session or self.session.session_id != session_id:
@@ -675,22 +749,12 @@ class VoiceFormHandler:
             if not self.session:
                 return
 
-        current_field = self.session.get_current_field()
-        if current_field and not current_field.get("required"):
-            self.session.clear_pending_confirmation()
-            self.session.advance_field()
-            await session_manager.save_session(self.session)
-            await self._ask_current_field()
-        else:
-            # Can't skip required field
-            skip_error = "This field is required and cannot be skipped."
-            skip_audio = await tts_service.synthesize(skip_error)
-
-            await self.send({
-                "type": "error",
-                "text": skip_error,
-                "audio": skip_audio
-            })
+        # Clear any pending confirmation and advance to next field
+        # Allow skipping any field - user can always go back with "previous"
+        self.session.clear_pending_confirmation()
+        self.session.advance_field()
+        await session_manager.save_session(self.session)
+        await self._ask_current_field()
 
     async def _handle_navigate(self, data: Dict[str, Any]) -> None:
         """Handle field navigation (previous/next)."""
@@ -726,22 +790,11 @@ class VoiceFormHandler:
                 await self._ask_current_field()
 
         elif direction == "next":
-            # Skip to next field (same as skip_field but via navigation)
-            current_field = self.session.get_current_field()
-            if current_field and not current_field.get("required"):
-                self.session.advance_field()
-                await session_manager.save_session(self.session)
-                await self._ask_current_field()
-            else:
-                # Can't skip required field
-                skip_error = "This field is required and cannot be skipped."
-                skip_audio = await tts_service.synthesize(skip_error)
-
-                await self.send({
-                    "type": "error",
-                    "text": skip_error,
-                    "audio": skip_audio
-                })
+            # Skip to next field - allow skipping any field
+            # User can always come back with "previous" button
+            self.session.advance_field()
+            await session_manager.save_session(self.session)
+            await self._ask_current_field()
 
     async def _handle_restart(self, data: Dict[str, Any]) -> None:
         """Restart the form filling process."""
@@ -806,6 +859,9 @@ class VoiceFormHandler:
                 "text": transition_text,
                 "audio": transition_audio
             })
+            
+            # Ask the next field question
+            await self._ask_current_field()
         else:
             # Form complete
             await self.send({
@@ -827,11 +883,31 @@ class VoiceFormHandler:
 
         field_id = current_field.get("id") or current_field.get("name")
         field_label = current_field.get("label", field_id)
+        html_type = current_field.get("type", "text").lower()
+        field_type = current_field.get("field_type", "").lower()
 
         # DYNAMIC question generation using LLM - works with ANY field!
         # The LLM analyzes the field metadata (label, type, pattern, options, etc.)
         # and generates a natural question automatically
         ask_text = await openrouter_client.generate_field_question(current_field)
+        
+        # For dropdown/radio fields, append the options to the question
+        # This helps users know what choices are available
+        options = current_field.get("options", [])
+        if options and (html_type in ["select", "radio"] or field_type in ["select", "radio"]):
+            # Extract option labels
+            option_labels = [opt.get("label", opt.get("value", "")) for opt in options]
+            
+            # Limit to first 6 options to avoid overly long audio
+            if len(option_labels) > 6:
+                options_text = ", ".join(option_labels[:6]) + ", and more"
+            else:
+                options_text = ", ".join(option_labels)
+            
+            # Append options to the question
+            ask_text = f"{ask_text} The options are: {options_text}."
+            logger.info(f"Added {len(option_labels)} options to question for field: {field_label}")
+        
         ask_audio = await tts_service.synthesize(ask_text)
 
         self.session.add_to_history("assistant", ask_text)

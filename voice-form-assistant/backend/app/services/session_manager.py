@@ -269,22 +269,6 @@ class SessionManager:
 
         return result > 0
 
-    async def extend_session(self, session_id: str) -> bool:
-        """
-        Extend session TTL.
-
-        Args:
-            session_id: Session identifier
-
-        Returns:
-            True if extended
-        """
-        await self.connect()
-
-        result = await self._redis.expire(self._key(session_id), self._ttl)
-
-        return result
-
     async def get_active_sessions_count(self) -> int:
         """Get count of active sessions."""
         await self.connect()

@@ -33,8 +33,8 @@ class Settings(BaseSettings):
     # AssemblyAI API base URL
     ASSEMBLYAI_BASE_URL: str = "https://api.assemblyai.com/v2"
     
-    # Request timeout in seconds
-    ASSEMBLYAI_TIMEOUT: int = 60
+    # Request timeout in seconds (increased for slow networks)
+    ASSEMBLYAI_TIMEOUT: int = 120
     
     # Polling interval for transcript status (seconds)
     ASSEMBLYAI_POLLING_INTERVAL: float = 0.5

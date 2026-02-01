@@ -13,26 +13,70 @@
     };
 
     /**
-     * Form Analyzer - Scans DOM for forms and extracts schema
+     * Form Analyzer - Auto-detects form types and dynamically parses them
+     * Supports: HTML, JSON Schema, React, Angular, Vue, Shadow DOM, AJAX-loaded
      */
     class FormAnalyzer {
         constructor() {
             this.forms = [];
+            this.detectedFramework = null;
+            this.mutationObserver = null;
+            this.shadowDOMSupport = false;
         }
 
+        /**
+         * Automatically detect and parse forms - works with ANY form type
+         */
         analyzePage() {
-            const forms = document.querySelectorAll('form');
+            console.log('[VoiceAssistant] Starting dynamic form analysis...');
+
+            // Step 1: Detect framework
+            this.detectedFramework = this.detectFramework();
+            if (this.detectedFramework) {
+                console.log(`[VoiceAssistant] Framework detected: ${this.detectedFramework}`);
+            }
+
+            // Step 2: Detect JSON Schema (multiple methods)
+            const jsonSchema = this.detectJSONSchema();
+            if (jsonSchema) {
+                console.log('[VoiceAssistant] JSON Schema detected:', jsonSchema.source);
+                return this.parseJSONSchema(jsonSchema.schema);
+            }
+
+            // Step 3: Scan for forms (multiple methods)
             const schema = {
                 name: document.title || 'Form',
-                fields: []
+                fields: [],
+                metadata: {
+                    framework: this.detectedFramework,
+                    hasShadowDOM: this.hasShadowDOM(),
+                    dynamicFormDetection: true
+                }
             };
 
-            forms.forEach(form => {
+            // Method 1: Standard HTML forms
+            const htmlForms = this.getStandardForms();
+            htmlForms.forEach(form => {
                 const fields = this.analyzeForm(form);
                 schema.fields.push(...fields);
             });
 
-            // Also check for standalone inputs
+            // Method 2: AngularJS forms (for UMANG compatibility)
+            if (this.detectedFramework === 'angularjs') {
+                const ngForms = this.getAngularJSForms();
+                ngForms.forEach(form => {
+                    const fields = this.analyzeForm(form);
+                    schema.fields.push(...fields);
+                });
+            }
+
+            // Method 3: Shadow DOM forms (web components)
+            if (this.shadowDOMSupport) {
+                const shadowFields = this.getShadowDOMFields();
+                schema.fields.push(...shadowFields);
+            }
+
+            // Method 4: Standalone inputs
             const standaloneInputs = document.querySelectorAll('input:not(form input), select:not(form select), textarea:not(form textarea)');
             standaloneInputs.forEach(input => {
                 const field = this.analyzeField(input);
@@ -41,8 +85,319 @@
                 }
             });
 
+            // Step 4: Watch for dynamically loaded forms (AJAX)
+            this.watchForDynamicForms();
+
             console.log('[VoiceAssistant] Form schema:', schema);
             return schema;
+        }
+
+        /**
+         * Auto-detect JavaScript framework
+         */
+        detectFramework() {
+            // Check for AngularJS (UMANG uses this)
+            if (window.angular || document.querySelector('[ng-app], [data-ng-app], [ng-controller]')) {
+                return 'angularjs';
+            }
+
+            // Check for modern Angular
+            if (window.ng || document.querySelector('[ng-version]')) {
+                return 'angular';
+            }
+
+            // Check for React
+            if (window.React || window.ReactDOM || document.querySelector('[data-reactroot], [data-reactid]')) {
+                return 'react';
+            }
+
+            // Check for Vue
+            if (window.Vue || document.querySelector('[v-cloak], [data-v-]')) {
+                return 'vue';
+            }
+
+            // Check for Svelte
+            if (document.querySelector('[data-svelte-h]')) {
+                return 'svelte';
+            }
+
+            return null;
+        }
+
+        /**
+         * Auto-detect JSON Schema from multiple sources
+         */
+        detectJSONSchema() {
+            // Method 1: window.voiceFormSchema (existing)
+            if (window.voiceFormSchema) {
+                return { source: 'window.voiceFormSchema', schema: window.voiceFormSchema };
+            }
+
+            // Method 2: <script type="application/json"> tags
+            const schemaScripts = document.querySelectorAll('script[type="application/json"]');
+            for (let script of schemaScripts) {
+                try {
+                    const data = JSON.parse(script.textContent);
+                    // Check if it looks like JSON Schema
+                    if (data.properties || (data.type === 'object' && data.required)) {
+                        return { source: 'script[type=application/json]', schema: data };
+                    }
+                    // Check for Form.io format
+                    if (data.components || data.display === 'form') {
+                        return { source: 'formio', schema: this.convertFormioToJSONSchema(data) };
+                    }
+                } catch (e) {
+                    // Not valid JSON, skip
+                }
+            }
+
+            // Method 3: data-schema attributes
+            const elemWithSchema = document.querySelector('[data-schema], [data-form-schema]');
+            if (elemWithSchema) {
+                try {
+                    const schemaStr = elemWithSchema.getAttribute('data-schema') || elemWithSchema.getAttribute('data-form-schema');
+                    const data = JSON.parse(schemaStr);
+                    return { source: 'data-schema attribute', schema: data };
+                } catch (e) {}
+            }
+
+            return null;
+        }
+
+        /**
+         * Get standard HTML forms
+         */
+        getStandardForms() {
+            return Array.from(document.querySelectorAll('form'));
+        }
+
+        /**
+         * Get AngularJS forms (for UMANG compatibility)
+         */
+        getAngularJSForms() {
+            const forms = [];
+
+            // Find elements with ng-form or ng-submit
+            const ngForms = document.querySelectorAll('[ng-form], [ng-submit], [data-ng-form]');
+            forms.push(...Array.from(ngForms));
+
+            // Also look for forms with ng-model inputs
+            document.querySelectorAll('[ng-model]').forEach(elem => {
+                const parentForm = elem.closest('form') || elem.closest('[ng-form]');
+                if (parentForm && !forms.includes(parentForm)) {
+                    forms.push(parentForm);
+                }
+            });
+
+            return forms;
+        }
+
+        /**
+         * Check if page has Shadow DOM
+         */
+        hasShadowDOM() {
+            for (let elem of document.querySelectorAll('*')) {
+                if (elem.shadowRoot) {
+                    this.shadowDOMSupport = true;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /**
+         * Get form fields from Shadow DOM
+         */
+        getShadowDOMFields() {
+            const fields = [];
+
+            function traverse(parent) {
+                // Get inputs at current level
+                parent.querySelectorAll('input, select, textarea').forEach(elem => {
+                    fields.push(elem);
+                });
+
+                // Traverse into shadow roots
+                parent.querySelectorAll('*').forEach(elem => {
+                    if (elem.shadowRoot) {
+                        console.log('[VoiceAssistant] Found Shadow DOM in:', elem.tagName);
+                        traverse(elem.shadowRoot);
+                    }
+                });
+            }
+
+            traverse(document);
+            return fields.map(elem => this.analyzeField(elem)).filter(f => f);
+        }
+
+        /**
+         * Watch for dynamically loaded forms (AJAX, SPA navigation)
+         */
+        watchForDynamicForms() {
+            if (this.mutationObserver) {
+                return; // Already watching
+            }
+
+            this.mutationObserver = new MutationObserver((mutations) => {
+                let hasNewForms = false;
+
+                for (let mutation of mutations) {
+                    if (mutation.type === 'childList') {
+                        for (let node of mutation.addedNodes) {
+                            if (node.nodeType === Node.ELEMENT_NODE) {
+                                // Check if new form was added
+                                if (node.tagName === 'FORM' ||
+                                    node.querySelector && node.querySelector('input, select, textarea')) {
+                                    hasNewForms = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (hasNewForms) {
+                    console.log('[VoiceAssistant] Dynamic form detected! Re-analyzing...');
+                    // Note: In full implementation, would trigger re-initialization
+                    // For now, just log it
+                }
+            });
+
+            this.mutationObserver.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+
+            console.log('[VoiceAssistant] Dynamic form detection enabled (MutationObserver)');
+        }
+
+        /**
+         * Convert Form.io schema to JSON Schema
+         */
+        convertFormioToJSONSchema(formioSchema) {
+            const jsonSchema = {
+                title: formioSchema.title || 'Form',
+                type: 'object',
+                properties: {},
+                required: []
+            };
+
+            if (formioSchema.components) {
+                formioSchema.components.forEach(component => {
+                    if (component.key) {
+                        jsonSchema.properties[component.key] = {
+                            type: component.type === 'number' ? 'number' : 'string',
+                            title: component.label || component.key
+                        };
+
+                        if (component.validate?.required) {
+                            jsonSchema.required.push(component.key);
+                        }
+                    }
+                });
+            }
+
+            return jsonSchema;
+        }
+
+        /**
+         * Parse JSON Schema and convert to unified field format
+         * Supports react-jsonschema-form and standard JSON Schema
+         */
+        parseJSONSchema(jsonSchema) {
+            const schema = {
+                name: jsonSchema.title || document.title || 'Form',
+                fields: []
+            };
+
+            const properties = jsonSchema.properties || {};
+            const required = jsonSchema.required || [];
+            const order = jsonSchema.uiSchema?.['ui:order'] || Object.keys(properties);
+
+            // Process fields in order
+            order.forEach(fieldName => {
+                if (fieldName === '*') return; // Skip wildcard
+
+                const fieldSchema = properties[fieldName];
+                if (!fieldSchema) return;
+
+                const field = this.parseJSONSchemaField(fieldName, fieldSchema, {
+                    required: required.includes(fieldName),
+                    uiSchema: jsonSchema.uiSchema?.[fieldName] || {}
+                });
+
+                if (field) {
+                    schema.fields.push(field);
+                }
+            });
+
+            console.log('[VoiceAssistant] Parsed JSON Schema:', schema);
+            return schema;
+        }
+
+        /**
+         * Convert a single JSON Schema field to unified format
+         */
+        parseJSONSchemaField(fieldName, fieldSchema, options) {
+            const { required, uiSchema } = options;
+
+            // Map JSON Schema type to HTML input type
+            const typeMap = {
+                'string': 'text',
+                'number': 'number',
+                'integer': 'number',
+                'boolean': 'checkbox'
+            };
+
+            let htmlType = typeMap[fieldSchema.type] || 'text';
+
+            // Check for format hints
+            if (fieldSchema.format) {
+                if (fieldSchema.format === 'email') htmlType = 'email';
+                if (fieldSchema.format === 'date') htmlType = 'date';
+                if (fieldSchema.format === 'tel') htmlType = 'tel';
+                if (fieldSchema.format === 'uri') htmlType = 'url';
+            }
+
+            // Check for enum (becomes select)
+            if (fieldSchema.enum) {
+                htmlType = 'select';
+            }
+
+            // Check uiSchema widget
+            if (uiSchema['ui:widget']) {
+                if (uiSchema['ui:widget'] === 'textarea') htmlType = 'textarea';
+                if (uiSchema['ui:widget'] === 'select') htmlType = 'select';
+                if (uiSchema['ui:widget'] === 'radio') htmlType = 'radio';
+                if (uiSchema['ui:widget'] === 'tel') htmlType = 'tel';
+            }
+
+            const field = {
+                id: fieldName,
+                name: fieldName,
+                type: htmlType,
+                label: fieldSchema.title || uiSchema['ui:title'] || fieldName,
+                required: required || false,
+                pattern: fieldSchema.pattern || null,
+                maxLength: fieldSchema.maxLength || null,
+                placeholder: uiSchema['ui:placeholder'] || fieldSchema.description || null,
+                field_type: this.detectFieldType({
+                    name: fieldName,
+                    label: fieldSchema.title || fieldName,
+                    type: htmlType,
+                    pattern: fieldSchema.pattern
+                })
+            };
+
+            // Add enum options if present
+            if (fieldSchema.enum) {
+                field.options = fieldSchema.enum.map((value, index) => ({
+                    value: value,
+                    label: fieldSchema.enumNames?.[index] || value
+                }));
+            }
+
+            return field;
         }
 
         analyzeForm(form) {
@@ -197,7 +552,7 @@
                 radios.forEach(radio => {
                     if (radio.value.toLowerCase() === value.toLowerCase()) {
                         radio.checked = true;
-                        radio.dispatchEvent(new Event('change', { bubbles: true }));
+                        this._dispatchFrameworkEvents(radio, value);
                     }
                 });
             } else if (element.tagName === 'SELECT') {
@@ -213,11 +568,78 @@
                 element.value = value;
             }
 
-            element.dispatchEvent(new Event('input', { bubbles: true }));
-            element.dispatchEvent(new Event('change', { bubbles: true }));
+            // Dispatch framework-specific events
+            this._dispatchFrameworkEvents(element, value);
 
             console.log(`[VoiceAssistant] Filled ${fieldId} with: ${value}`);
             return true;
+        }
+
+        /**
+         * Dispatch events for different frameworks (React, Vue, AngularJS)
+         */
+        _dispatchFrameworkEvents(element, value) {
+            // Standard DOM events (works for most)
+            element.dispatchEvent(new Event('input', { bubbles: true }));
+            element.dispatchEvent(new Event('change', { bubbles: true }));
+
+            // React event handling
+            // React uses synthetic events and may need special handling
+            const reactKey = Object.keys(element).find(k => k.startsWith('__react'));
+            if (reactKey) {
+                // Trigger React's internal value setter
+                const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                    window.HTMLInputElement.prototype,
+                    'value'
+                ).set;
+                if (nativeInputValueSetter) {
+                    nativeInputValueSetter.call(element, value);
+                    element.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
+
+            // Vue event handling
+            if (element.__vue__ || element._vnode || element.__vueParentComponent) {
+                // Vue 2 & 3 compatibility
+                if (element.__vue__) {
+                    element.__vue__.$emit('input', value);
+                }
+                // Trigger Vue's v-model update
+                element.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+
+            // AngularJS event handling (for UMANG compatibility)
+            if (window.angular && window.angular.element) {
+                try {
+                    const ngElement = window.angular.element(element);
+                    const scope = ngElement.scope();
+                    if (scope) {
+                        scope.$apply(() => {
+                            // Get ng-model value
+                            const ngModel = element.getAttribute('ng-model') || element.getAttribute('data-ng-model');
+                            if (ngModel) {
+                                // Set value on scope
+                                const parts = ngModel.split('.');
+                                let obj = scope;
+                                for (let i = 0; i < parts.length - 1; i++) {
+                                    obj = obj[parts[i]];
+                                }
+                                obj[parts[parts.length - 1]] = value;
+                            }
+                        });
+                    }
+                } catch (e) {
+                    // AngularJS not available or scope not found
+                    console.debug('[VoiceAssistant] AngularJS scope update failed:', e);
+                }
+            }
+
+            // Modern Angular (2+) handling
+            if (window.ng) {
+                // Angular uses zone.js, trigger change detection
+                element.dispatchEvent(new Event('input', { bubbles: true }));
+                element.dispatchEvent(new Event('blur', { bubbles: true }));
+            }
         }
 
         highlightField(fieldId) {
@@ -794,12 +1216,10 @@
                 this.elements.prevBtn.disabled = fieldIndex <= 0;
             }
             
-            // Skip button: disabled for required fields
+            // Skip button: always enabled - users can skip any field
             if (this.elements.skipBtn) {
-                this.elements.skipBtn.disabled = isCurrentFieldRequired;
-                this.elements.skipBtn.title = isCurrentFieldRequired 
-                    ? 'This field is required' 
-                    : 'Skip this field';
+                this.elements.skipBtn.disabled = false;
+                this.elements.skipBtn.title = 'Skip to next field';
             }
         }
 
