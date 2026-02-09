@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any, List
 
 from .base import LLMProvider, LLMMessage, LLMResult, MessageRole
 from ...services.openrouter_client import OpenRouterClient
-from ...core.config import get_config
+from ...config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,14 +32,20 @@ class OpenRouterProvider(LLMProvider):
                    If None, loads from global config.
         """
         if config is None:
-            app_config = get_config()
-            config = app_config.get_provider_config('llm', 'openrouter')
+            # Use simple settings
+            config = {
+                'api_key': settings.OPENROUTER_API_KEY,
+                'model': settings.OPENROUTER_MODEL,
+                'base_url': settings.OPENROUTER_BASE_URL,
+                'timeout': settings.OPENROUTER_TIMEOUT,
+                'temperature': 0.3  # Reasonable default
+            }
 
         self.config = config
-        self.api_key = config.get('api_key', '')
-        self.model = config.get('model', 'meta-llama/llama-3.1-8b-instruct')
-        self.base_url = config.get('base_url', 'https://openrouter.ai/api/v1')
-        self.timeout = config.get('timeout', 30)
+        self.api_key = config.get('api_key', settings.OPENROUTER_API_KEY)
+        self.model = config.get('model', settings.OPENROUTER_MODEL)
+        self.base_url = config.get('base_url', settings.OPENROUTER_BASE_URL)
+        self.timeout = config.get('timeout', settings.OPENROUTER_TIMEOUT)
         self.temperature = config.get('temperature', 0.3)
 
         # Initialize the underlying OpenRouter client

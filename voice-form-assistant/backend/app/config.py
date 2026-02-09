@@ -107,6 +107,35 @@ class Settings(BaseSettings):
     AUDIO_AGC: bool = True  # Auto Gain Control
 
     # =================================================================
+    # Confidence Thresholds
+    # =================================================================
+    
+    CONFIDENCE_HIGH: float = 0.85  # High confidence (critical fields)
+    CONFIDENCE_MEDIUM: float = 0.65  # Medium confidence (non-critical fields)
+    CONFIDENCE_LOW: float = 0.3  # Low confidence (retry/ask again)
+    
+    # =================================================================
+    # Audio Validation
+    # =================================================================
+    
+    MIN_AUDIO_BYTES: int = 4000  # Minimum audio size in bytes
+    MIN_AUDIO_DURATION: float = 0.3  # Minimum duration in seconds
+    
+    # =================================================================
+    # Conversation Settings
+    # =================================================================
+    
+    MAX_RETRIES: int = 2  # Maximum retries for failed operations
+    EMPTY_TRANSCRIPTION_THRESHOLD: int = 2  # Empty transcriptions before asking to speak louder
+    
+    # Critical field types that always require confirmation
+    CRITICAL_FIELD_TYPES: List[str] = ["aadhaar", "pan", "passport", "email", "mobile"]
+    
+    # Keywords for confirmation (yes/no detection)
+    POSITIVE_KEYWORDS: List[str] = ["yes", "yeah", "yep", "correct", "right", "haan", "ha", "okay", "ok", "sure", "confirm"]
+    NEGATIVE_KEYWORDS: List[str] = ["no", "nope", "wrong", "incorrect", "nahi", "change", "different"]
+    
+    # =================================================================
     # Logging Configuration
     # =================================================================
     

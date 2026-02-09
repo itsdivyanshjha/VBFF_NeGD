@@ -1,6 +1,7 @@
 """
 OpenRouter LLM Client.
 Handles communication with OpenRouter API for field value extraction and response generation.
+Optimized for Llama 3.3 70B Instruct.
 """
 
 import logging
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class OpenRouterClient:
-    """Client for OpenRouter API."""
+    """Client for OpenRouter API - optimized for Llama 3.3 70B."""
 
     def __init__(self):
         self.api_key = settings.OPENROUTER_API_KEY
@@ -24,80 +25,55 @@ class OpenRouterClient:
         self.timeout = settings.OPENROUTER_TIMEOUT
         self.site_url = settings.OPENROUTER_SITE_URL
         self.app_name = settings.OPENROUTER_APP_NAME
-        # Cache for generated questions (avoid regenerating for same field types)
         self._question_cache: Dict[str, str] = {}
 
     def _get_headers(self) -> Dict[str, str]:
         """Get headers for API requests."""
-        # Note: OpenRouter expects HTTP-Referer (not standard Referer)
-        # This is their specific requirement for app identification and rankings
         return {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": self.site_url,  # OpenRouter-specific header
-            "X-Title": self.app_name  # OpenRouter-specific header
+            "HTTP-Referer": self.site_url,
+            "X-Title": self.app_name
         }
 
     async def _make_request(
         self,
         messages: List[Dict[str, str]],
-        temperature: float = 0.3,
-        max_tokens: int = 500
+        temperature: float = 0.1,
+        max_tokens: int = 200
     ) -> str:
-        """
-        Make a request to OpenRouter API with retry logic.
+        """Make a request to OpenRouter API."""
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
 
-        Args:
-            messages: List of message dicts with role and content
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens in response
-
-        Returns:
-            Response text from the model
-        """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
-                    headers=self._get_headers(),
-                    json={
-                        "model": self.model,
-                        "messages": messages,
-                        "temperature": temperature,
-                        "max_tokens": max_tokens
-                    }
+                    json=payload,
+                    headers=self._get_headers()
                 )
                 response.raise_for_status()
+                result = response.json()
+                return result['choices'][0]['message']['content']
 
-                data = response.json()
-                content = data["choices"][0]["message"]["content"]
-                
-                logger.debug(f"OpenRouter API success: {len(content)} chars")
-                return content
+        except httpx.HTTPStatusError as e:
+            logger.error(f"OpenRouter API error {e.response.status_code}")
+            raise
+        except httpx.RequestError as e:
+            logger.error(f"OpenRouter API request failed: {e}")
+            raise
+        except (KeyError, IndexError) as e:
+            logger.error(f"Unexpected API response format: {e}")
+            raise
 
-            except httpx.HTTPStatusError as e:
-                status_code = e.response.status_code
-                error_detail = ""
-                try:
-                    error_detail = e.response.json().get("error", {}).get("message", "")
-                except:
-                    error_detail = e.response.text[:200]
-                
-                if status_code == 401:
-                    logger.error("OpenRouter API authentication failed - check your API key")
-                elif status_code == 429:
-                    logger.error("OpenRouter API rate limit exceeded")
-                elif status_code >= 500:
-                    logger.error(f"OpenRouter API server error: {status_code}")
-                else:
-                    logger.error(f"OpenRouter API error {status_code}: {error_detail}")
-                raise
-            except httpx.RequestError as e:
-                logger.error(f"OpenRouter API request failed: {e}")
-                raise
-            except (KeyError, IndexError) as e:
-                logger.error(f"Unexpected OpenRouter API response format: {e}")
-                raise
+    # =========================================================================
+    # FIELD VALUE EXTRACTION
+    # =========================================================================
 
     async def extract_field_value(
         self,
@@ -106,633 +82,432 @@ class OpenRouterClient:
         context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Extract field value from user input using LLM.
-
-        Args:
-            field_info: Information about the field (name, type, validation rules)
-            user_input: User's spoken input transcription
-            context: Optional context (previous fields, conversation history)
-
-        Returns:
-            Dict with: value, confidence, needs_confirmation, reasoning
+        Extract field value from user's voice input.
+        
+        Single clean extraction path - let the LLM do the heavy lifting.
         """
-        system_prompt = """You are an expert form-filling assistant specializing in natural speech interpretation. Extract the value from speech and FORMAT it precisely according to field requirements.
-
-CRITICAL RULES:
-1. READ field constraints carefully
-2. Extract what user said (handle natural speech patterns)
-3. FORMAT to match required pattern/format EXACTLY
-4. Handle mixed Hindi-English (Hinglish) gracefully
-
-═══════════════════════════════════════════════════════════
-NATURAL SPEECH PATTERNS - HANDLE THESE!
-═══════════════════════════════════════════════════════════
-
-SPOKEN MULTIPLIERS:
-- "triple nine" / "teen nine" / "trip nine" → "999"
-- "double zero" / "dub zero" → "00"
-- "double five" → "55"
-- Pattern: "double X" = XX, "triple X" = XXX
-
-SPOKEN SYMBOLS (Email):
-- "at the rate" / "at" → "@"
-- "dot" / "period" → "."
-- "underscore" → "_"
-- "dash" / "hyphen" → "-"
-- Remove ALL spaces: "name @ gmail . com" → "name@gmail.com"
-
-ZERO VARIANTS:
-- "oh" / "o" (in context of numbers) → "0"
-- "zero" → "0"
-Example: "nine oh three" → "903"
-
-HINDI-ENGLISH MIXED:
-- "सिक्स" = "six" = "6"
-- "फाइव" = "five" = "5"
-- "जीरो" = "zero" = "0"
-- Extract digits regardless of language
-
-═══════════════════════════════════════════════════════════
-FIELD-SPECIFIC PROCESSING
-═══════════════════════════════════════════════════════════
-
-NUMERIC FIELDS (Aadhaar, Phone, PIN):
-1. Convert ALL spoken numbers to digits (English or Hindi)
-2. Handle multipliers: "triple nine" → "999"
-3. Handle variants: "oh" → "0"
-4. Remove ALL formatting: spaces, dashes, periods
-5. Match exact length from constraints
-
-Examples:
-- "nine eight one zero seven three triple nine five" → "9810739995" ✓
-- "981-073-trip-95" → Interpret as "9810739995" ✓
-- "Six, five, four, seven..." → "6547..." ✓
-- "सिक्स फाइव फॉर" → "654" ✓
-
-DATE FIELDS:
-- Parse ANY natural date format
-- Output in constraint's EXACT format (usually YYYY-MM-DD)
-Examples:
-- "august 21 1998" → "1998-08-21" ✓
-- "21st august nineteen ninety eight" → "1998-08-21" ✓
-- "8/21/98" → "1998-08-21" ✓
-
-EMAIL FIELDS:
-- Convert ALL spoken symbols to actual symbols
-- Remove all spaces
-- Lowercase everything
-Examples:
-- "john dot smith at gmail dot com" → "john.smith@gmail.com" ✓
-- "prashant.singh25 at the rate gmail.com" → "prashant.singh25@gmail.com" ✓
-
-NAME FIELDS:
-- Title case each word
-- Remove trailing punctuation (commas, periods)
-- Keep middle names/initials
-Examples:
-- "Divyansh, Jha" → "Divyansh Jha" ✓
-- "RAJESH KUMAR" → "Rajesh Kumar" ✓
-
-═══════════════════════════════════════════════════════════
-OUTPUT FORMAT
-═══════════════════════════════════════════════════════════
-
-Respond with JSON:
-{
-    "value": "extracted value in correct format or null",
-    "confidence": 0.0 to 1.0,
-    "needs_confirmation": true/false,
-    "reasoning": "brief explanation of transformations made"
-}
-
-If you cannot extract a valid value, set "value": null and explain why in reasoning."""
-
-        # Build constraints from HTML field attributes
-        field_constraints = []
-        field_type = field_info.get('field_type', '').lower()
-        html_type = field_info.get('type', 'text').lower()
-        
-        if field_info.get('required'):
-            field_constraints.append("Required field")
-        
-        # Extract format requirements from HTML attributes
-        if html_type == 'date':
-            field_constraints.append("OUTPUT FORMAT: YYYY-MM-DD (example: 2003-05-29)")
-            field_constraints.append("Parse any spoken date and convert to this format")
-        
-        if field_info.get('pattern'):
-            pattern = field_info.get('pattern')
-            field_constraints.append(f"Must match regex: {pattern}")
-            
-            # Interpret common patterns
-            if '\\d{12}' in pattern or r'\d{12}' in pattern:
-                field_constraints.append("OUTPUT FORMAT: Exactly 12 digits, no spaces")
-            elif '\\d{10}' in pattern or r'\d{10}' in pattern:
-                field_constraints.append("OUTPUT FORMAT: Exactly 10 digits, no spaces")
-            elif '\\d{6}' in pattern or r'\d{6}' in pattern:
-                field_constraints.append("OUTPUT FORMAT: Exactly 6 digits, no spaces")
-            elif '[6-9]\\d{9}' in pattern:
-                field_constraints.append("OUTPUT FORMAT: 10 digits starting with 6, 7, 8, or 9")
-        
-        if field_info.get('maxLength'):
-            max_len = field_info.get('maxLength')
-            field_constraints.append(f"Maximum length: {max_len} characters")
-            
-            # Infer format from maxLength for common cases
-            if max_len == 12 and not any('12' in str(c) for c in field_constraints):
-                field_constraints.append("OUTPUT FORMAT: 12 characters (likely Aadhaar)")
-            elif max_len == 10 and html_type == 'tel':
-                field_constraints.append("OUTPUT FORMAT: 10 digits (mobile number)")
-        
-        constraints_str = "\n".join(f"- {c}" for c in field_constraints) if field_constraints else "No specific constraints"
-
-        field_description = f"""
-Field Name: {field_info.get('label', field_info.get('name', 'Unknown'))}
-HTML Type: {html_type}
-Detected Type: {field_type}
-
-CONSTRAINTS FROM HTML:
-{constraints_str}
-
-IMPORTANT: Output must match the format specified above!
-"""
-
-        if field_info.get('options'):
-            field_description += f"\nValid options: {', '.join([str(opt.get('label', opt.get('value'))) for opt in field_info.get('options', [])])}"
-
-        context_str = ""
-        if context:
-            validation_error = context.get('validation_error')
-            if validation_error:
-                context_str += f"\n\n⚠️ PREVIOUS ATTEMPT FAILED: {validation_error}"
-                context_str += "\n→ Pay special attention to length and format constraints!"
-                context_str += "\n→ Check for missed digits or incorrect symbols."
-            
-            filled = context.get('filled_fields', {})
-            if filled and len(filled) > 0:
-                context_str += f"\n\n📋 Context from other fields: {json.dumps(filled, indent=2)}"
-
-        # Add specific hints for common problematic fields
-        field_hints = ""
-        if field_type in ["aadhaar", "mobile", "tel", "number", "pincode"]:
-            field_hints = """
-REMINDER FOR NUMERIC FIELDS:
-- Handle "triple nine" → "999"
-- Handle "double zero" → "00"  
-- Handle "oh" → "0"
-- Convert Hindi numbers: "सिक्स" → "6"
-- Remove ALL spaces/dashes
-- Count the digits carefully to match required length!"""
-
-        user_message = f"""
-{field_description}
-{context_str}
-{field_hints}
-
-═══════════════════════════════════════════════════════════
-USER INPUT: "{user_input}"
-═══════════════════════════════════════════════════════════
-
-Extract the value, apply ALL transformations, and respond with JSON only."""
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ]
-
-        try:
-            response = await self._make_request(messages, temperature=0.0)
-
-            # Parse JSON response
-            # Handle potential markdown code blocks
-            response = response.strip()
-            if response.startswith("```"):
-                response = response.split("```")[1]
-                if response.startswith("json"):
-                    response = response[4:]
-            response = response.strip()
-
-            result = json.loads(response)
-
-            # Ensure required fields exist
-            result.setdefault("value", None)
-            result.setdefault("confidence", 0.5)
-            result.setdefault("needs_confirmation", True)
-            result.setdefault("reasoning", "")
-
-            # Post-process: Apply additional normalization if needed
-            if result["value"]:
-                result["value"] = self._post_process_value(result["value"], field_info)
-
-            # Auto-confirm high confidence non-critical fields
-            if result["confidence"] >= 0.9:
-                critical_types = ["aadhaar", "pan", "mobile", "email"]
-                if field_info.get("field_type") not in critical_types:
-                    result["needs_confirmation"] = False
-
-            logger.info(f"Extracted value: {result['value']} (confidence: {result['confidence']})")
-
-            return result
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse LLM response as JSON: {e}")
-            return {
-                "value": user_input,
-                "confidence": 0.3,
-                "needs_confirmation": True,
-                "reasoning": "Failed to parse LLM response, using raw input"
-            }
-        except Exception as e:
-            logger.error(f"Error extracting field value: {e}")
+        if not user_input or not user_input.strip():
             return {
                 "value": None,
                 "confidence": 0.0,
                 "needs_confirmation": True,
-                "reasoning": f"Error: {str(e)}"
+                "reasoning": "Empty input"
             }
 
-    def _post_process_value(self, value: str, field_info: Dict[str, Any]) -> str:
-        """
-        Final safety net: Apply deterministic normalization rules.
-        
-        This catches cases where LLM might not perfectly normalize.
-        """
-        if not value:
-            return value
-        
-        field_type = field_info.get('field_type', '').lower()
-        html_type = field_info.get('type', 'text').lower()
-        
-        # Numeric fields: Ensure only digits
-        if field_type in ('aadhaar', 'mobile', 'pincode') or html_type in ('tel', 'number'):
-            # Strip everything except digits
-            cleaned = re.sub(r'[^\d]', '', value)
-            if cleaned:
-                return cleaned
-        
-        # Email fields: Ensure proper format
-        elif field_type == 'email' or html_type == 'email':
-            # Lowercase
-            cleaned = value.lower().strip()
-            
-            # Robust regex replacements (in case LLM missed some)
-            # "at the rate" variants
-            cleaned = re.sub(r'\s*at\s*the\s*rate\s*', '@', cleaned)
-            
-            # Standalone "at" as @
-            cleaned = re.sub(r'\s+at\s+', '@', cleaned)
-            
-            # "dot" variants
-            cleaned = re.sub(r'\s*dot\s*', '.', cleaned)
-            cleaned = re.sub(r'\s*period\s*', '.', cleaned)
-            cleaned = re.sub(r'\s*point\s*', '.', cleaned)
-            
-            # Other symbols
-            cleaned = re.sub(r'\s*underscore\s*', '_', cleaned)
-            cleaned = re.sub(r'\s*dash\s*', '-', cleaned)
-            cleaned = re.sub(r'\s*hyphen\s*', '-', cleaned)
-            
-            # Remove remaining spaces
-            cleaned = cleaned.replace(' ', '')
-            
-            return cleaned
-        
-        # Name fields: Proper title case
-        elif field_type == 'name' or 'name' in field_info.get('label', '').lower():
-            # Remove trailing punctuation
-            cleaned = value.strip().rstrip('.,;')
-            # Title case
-            return ' '.join(word.capitalize() for word in cleaned.split())
-        
-        # Default: just strip whitespace
-        return value.strip()
-    
-    async def generate_field_question(self, field: Dict[str, Any]) -> str:
-        """
-        DYNAMICALLY generate a question for any form field using LLM.
-        Intelligently handles name fields and other field types with context-aware questions.
-
-        Args:
-            field: Field metadata from DOM (label, type, required, pattern, maxLength, options, etc.)
-
-        Returns:
-            Natural language question to ask the user
-        """
-        # Build cache key from field characteristics
-        field_label = field.get("label", "")
-        field_type = field.get("field_type", field.get("type", "text"))
-        has_options = bool(field.get("options"))
-        cache_key = f"{field_label}_{field_type}_{field.get('required', False)}_{has_options}"
-
-        # Check cache first
-        if cache_key in self._question_cache:
-            return self._question_cache[cache_key]
-
-        # Build comprehensive field context for LLM
-        field_info = []
-        field_info.append(f"Label: {field_label}")
-        field_info.append(f"HTML Type: {field.get('type', 'text')}")
-        field_info.append(f"Detected Type: {field_type}")
-        field_info.append(f"Field ID/Name: {field.get('id', '') or field.get('name', '')}")
-
-        if field.get("required"):
-            field_info.append("Required: Yes")
-
-        if field.get("pattern"):
-            field_info.append(f"Pattern: {field.get('pattern')}")
-
-        if field.get("maxLength"):
-            field_info.append(f"Max Length: {field.get('maxLength')}")
-
-        if field.get("placeholder"):
-            field_info.append(f"Placeholder: {field.get('placeholder')}")
-
-        if field.get("options"):
-            options_text = ", ".join([opt.get("label", opt.get("value", "")) for opt in field.get("options", [])[:5]])
-            field_info.append(f"Options Available: {options_text}")
-            field_info.append("NOTE: Do NOT include these options in your question - they will be added separately!")
-
-        # Enhanced system prompt with specific instructions for name fields
-        system_prompt = """You are an expert at generating natural, conversational questions for form fields.
-Your task is to analyze the field metadata and generate a question that:
-1. Is natural and conversational (sounds friendly, not robotic)
-2. Reflects the actual context and relationship when dealing with name fields
-3. Is concise but complete (under 18 words)
-4. Gets to the point while remaining polite
-
-CRITICAL RULES:
-- For SELECT/RADIO fields: NEVER include the options in your question! Just ask for the field.
-  The system will add options separately.
-- For NAME FIELDS: Analyze the label to understand relationships (father, mother, spouse, etc.)
-- Keep questions CONCISE but NATURAL
-
-Generate questions that sound friendly and reflect the actual relationship context."""
-
-        user_prompt = f"""Generate a natural question for this form field:
-
-FIELD INFORMATION:
-{chr(10).join(field_info)}
-
-SPECIFIC GUIDELINES:
-
-NAME FIELDS:
-- Analyze the label to detect relationship context (father, mother, spouse, etc.)
-- Generate questions that reflect the relationship: "What is your father's name?" NOT "What is your father's name field?"
-- For full name fields, ask naturally: "What is your full name?" or "What's your name?"
-
-NUMERIC FIELDS (Aadhaar, Phone, PIN):
-- Be clear and friendly: "What is your 12-digit Aadhaar number?" or "Please tell me your mobile number"
-- NO lengthy instructions, but be polite
-
-DATE FIELDS:
-- Natural and clear: "What is your date of birth?" or "When were you born?"
-
-EMAIL FIELDS:
-- Simple and friendly: "What is your email address?"
-
-SELECT/RADIO FIELDS:
-- DO NOT list the options in your question - the system will add them separately
-- Just ask naturally: "Please choose your [field]" or "What is your [field]?"
-- Example: For "Gender" field, ask "What is your gender?" NOT "Your gender: Male, Female, Other?"
-
-ADDRESS FIELDS:
-- Clear: "What is your complete address?"
-
-GENERAL RULES:
-- Keep it under 18 words
-- Be natural and conversational (like talking to a person)
-- Be polite and friendly
-- Remove any parenthetical hints from labels (e.g., "(as per Aadhaar)") when asking
-- Sound helpful, not robotic
-
-Return ONLY the question text, nothing else. No quotes, no prefixes."""
+        field_type = self._detect_field_type(field_info)
+        prompt = self._build_extraction_prompt(user_input.strip(), field_info, field_type)
 
         try:
             response = await self._make_request(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.3  # Low temperature for consistent questions
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,  # Deterministic for extraction
+                max_tokens=150
+            )
+            
+            result = self._parse_extraction_response(response)
+            result = self._apply_field_constraints(result, field_info, field_type)
+            
+            logger.info(f"Extracted '{result.get('value')}' (conf: {result.get('confidence')}) from '{user_input}'")
+            return result
+
+        except Exception as e:
+            logger.error(f"Extraction failed: {e}")
+            return {
+                "value": user_input.strip(),
+                "confidence": 0.2,
+                "needs_confirmation": True,
+                "reasoning": f"Extraction error: {str(e)}"
+            }
+
+    def _detect_field_type(self, field_info: Dict) -> str:
+        """Detect the semantic field type from schema."""
+        label = field_info.get('label', '').lower()
+        html_type = field_info.get('type', '').lower()
+        field_type = field_info.get('field_type', '').lower()
+        pattern = field_info.get('pattern', '')
+        max_len = field_info.get('maxLength') or field_info.get('maxlength')
+
+        # Check explicit type first
+        if field_type:
+            return field_type
+
+        # Detect from label keywords
+        if any(x in label for x in ['aadhaar', 'aadhar', 'uid']):
+            return 'aadhaar'
+        if any(x in label for x in ['mobile', 'phone', 'contact']):
+            return 'mobile'
+        if any(x in label for x in ['pin', 'postal', 'zip']):
+            return 'pincode'
+        if 'email' in label or html_type == 'email':
+            return 'email'
+        if 'name' in label:
+            return 'name'
+        if any(x in label for x in ['date', 'dob', 'birth']):
+            return 'date'
+
+        # Detect from pattern/length
+        if pattern:
+            if max_len == 12 and '[0-9]' in pattern:
+                return 'aadhaar'
+            if max_len == 10 and '[0-9]' in pattern:
+                return 'mobile'
+            if max_len == 6 and '[0-9]' in pattern:
+                return 'pincode'
+
+        # HTML type fallback
+        if html_type in ('tel', 'number'):
+            return 'numeric'
+        if html_type == 'email':
+            return 'email'
+
+        return 'text'
+
+    def _build_extraction_prompt(self, transcription: str, field_info: Dict, field_type: str) -> str:
+        """
+        Build a focused extraction prompt.
+        
+        Key principle: Short, structured prompts work better with Llama 3.3.
+        """
+        label = field_info.get('label', 'field')
+        requirements = self._get_field_requirements(field_info)
+
+        # Base instruction - keep it tight
+        prompt = f"""TASK: Extract the value for "{label}" from voice input.
+
+INPUT: "{transcription}"
+FIELD TYPE: {field_type}
+REQUIREMENTS: {requirements}
+
+RULES:
+1. Convert ALL number words to digits:
+   - English: one=1, two=2, three=3, four=4, five=5, six=6, seven=7, eight=8, nine=9, zero=0
+   - Hindi: ek=1, do=2, teen=3, char=4, paanch=5, che=6, saat=7, aath=8, nau=9
+   - Transliterated Hindi: फाइव=5, सिक्स=6, टू=2, थ्री=3, फॉर=4, वन=1, सेवन=7, एट=8, नाइन=9, जीरो=0
+2. Remove filler words: "my", "is", "the", "number", "मेरा", "है"
+3. Handle "double X" = XX, "triple X" = XXX
+4. Preserve the EXACT sequence of digits spoken
+
+"""
+
+        # Add type-specific guidance (minimal)
+        if field_type == 'email':
+            prompt += """EMAIL RULES:
+- "at" or "at the rate" = @
+- "dot" = .
+- "underscore" = _
+- Remove all spaces from final email
+
+"""
+        elif field_type == 'name':
+            prompt += """NAME RULES:
+- Use Title Case
+- Keep only the name, remove "my name is" etc.
+
+"""
+        elif field_type in ('aadhaar', 'mobile', 'pincode', 'numeric'):
+            prompt += f"""NUMERIC RULES:
+- Output ONLY digits
+- Expected length: {field_info.get('maxLength', 'varies')} digits
+
+"""
+
+        prompt += """OUTPUT FORMAT (JSON only, no other text):
+{"value": "extracted_value", "confidence": 0.0-1.0}
+
+RESPOND WITH ONLY THE JSON. NO EXPLANATIONS."""
+
+        return prompt
+
+    def _get_field_requirements(self, field_info: Dict) -> str:
+        """Get human-readable requirements from field schema."""
+        requirements = []
+
+        min_len = field_info.get('minLength') or field_info.get('minlength')
+        max_len = field_info.get('maxLength') or field_info.get('maxlength')
+
+        if min_len and max_len:
+            if min_len == max_len:
+                requirements.append(f"exactly {max_len} characters")
+            else:
+                requirements.append(f"{min_len}-{max_len} characters")
+        elif max_len:
+            requirements.append(f"max {max_len} characters")
+
+        pattern = field_info.get('pattern')
+        if pattern:
+            if '[0-9]' in pattern or r'\d' in pattern:
+                requirements.append("digits only")
+            if '[A-Z]' in pattern:
+                requirements.append("uppercase letters")
+
+        if field_info.get('required'):
+            requirements.append("required")
+
+        return ", ".join(requirements) if requirements else "no specific format"
+
+    def _parse_extraction_response(self, response: str) -> Dict:
+        """Parse LLM response to extract value and confidence."""
+        response = response.strip()
+
+        # Remove markdown code blocks if present
+        if response.startswith('```'):
+            response = re.sub(r'^```(?:json)?\n?', '', response)
+            response = re.sub(r'\n?```$', '', response)
+        response = response.strip()
+
+        # Try direct JSON parse
+        try:
+            parsed = json.loads(response)
+            if 'value' in parsed:
+                return {
+                    "value": parsed.get('value'),
+                    "confidence": float(parsed.get('confidence', 0.5)),
+                    "needs_confirmation": parsed.get('confidence', 0.5) < 0.8
+                }
+        except json.JSONDecodeError:
+            pass
+
+        # Try to find JSON in response
+        json_match = re.search(r'\{[^{}]*"value"[^{}]*\}', response)
+        if json_match:
+            try:
+                parsed = json.loads(json_match.group())
+                return {
+                    "value": parsed.get('value'),
+                    "confidence": float(parsed.get('confidence', 0.5)),
+                    "needs_confirmation": parsed.get('confidence', 0.5) < 0.8
+                }
+            except json.JSONDecodeError:
+                pass
+
+        # Fallback: extract value with regex
+        value_match = re.search(r'"value"\s*:\s*"([^"]*)"', response)
+        conf_match = re.search(r'"confidence"\s*:\s*([\d.]+)', response)
+
+        if value_match:
+            return {
+                "value": value_match.group(1),
+                "confidence": float(conf_match.group(1)) if conf_match else 0.4,
+                "needs_confirmation": True
+            }
+
+        # Last resort: return cleaned response as value
+        logger.warning(f"Could not parse LLM response: {response[:100]}")
+        return {
+            "value": response.strip('"').strip(),
+            "confidence": 0.3,
+            "needs_confirmation": True
+        }
+
+    def _apply_field_constraints(self, result: Dict, field_info: Dict, field_type: str) -> Dict:
+        """Apply final formatting constraints based on field type."""
+        value = result.get('value')
+        if not value:
+            return result
+
+        value = str(value).strip()
+
+        # Type-specific post-processing
+        if field_type in ('aadhaar', 'mobile', 'pincode', 'numeric'):
+            # Extract only digits
+            digits = re.sub(r'[^\d]', '', value)
+            if digits:
+                value = digits
+
+        elif field_type == 'email':
+            # Ensure email format
+            value = value.lower().strip()
+            # Final cleanup in case LLM missed something
+            value = re.sub(r'\s+at\s+', '@', value, flags=re.IGNORECASE)
+            value = re.sub(r'\s+dot\s+', '.', value, flags=re.IGNORECASE)
+            value = value.replace(' ', '')
+
+        elif field_type == 'name':
+            # Title case for names
+            value = ' '.join(word.capitalize() for word in value.split())
+
+        # Validate against pattern if present
+        pattern = field_info.get('pattern')
+        if pattern and value:
+            try:
+                if not re.match(f'^{pattern}$', value):
+                    result['needs_confirmation'] = True
+                    result['confidence'] = min(result.get('confidence', 0.5), 0.6)
+            except re.error:
+                pass
+
+        result['value'] = value
+        return result
+
+    # =========================================================================
+    # QUESTION GENERATION
+    # =========================================================================
+
+    async def generate_field_question(self, field: Dict[str, Any]) -> str:
+        """Generate a natural question for a form field."""
+        field_label = field.get("label", "")
+        field_type = field.get("field_type", field.get("type", "text"))
+        has_options = bool(field.get("options"))
+
+        cache_key = f"{field_label}_{field_type}_{has_options}"
+        if cache_key in self._question_cache:
+            return self._question_cache[cache_key]
+
+        # Build field context
+        field_context = [
+            f"Label: {field_label}",
+            f"Type: {field_type}",
+        ]
+
+        if field.get("required"):
+            field_context.append("Required: Yes")
+        if field.get("maxLength"):
+            field_context.append(f"Max Length: {field.get('maxLength')}")
+        if field.get("options"):
+            options_preview = ", ".join([
+                opt.get("label", opt.get("value", ""))
+                for opt in field.get("options", [])[:4]
+            ])
+            field_context.append(f"Options: {options_preview}")
+            field_context.append("NOTE: Do NOT list options in your question!")
+
+        prompt = f"""Generate a short, friendly question to ask for this form field.
+
+FIELD INFO:
+{chr(10).join(field_context)}
+
+RULES:
+1. Keep it under 15 words
+2. Sound natural and conversational
+3. For name fields with relationships (father, mother, spouse), ask appropriately
+4. For SELECT fields, do NOT list the options
+5. Be friendly but concise
+
+EXAMPLES:
+- "Full Name" → "What is your full name?"
+- "Father's Name" → "What is your father's name?"
+- "Mobile Number" → "What is your mobile number?"
+- "Gender" (select) → "What is your gender?"
+- "Email" → "What is your email address?"
+
+OUTPUT: Write ONLY the question, nothing else."""
+
+        try:
+            response = await self._make_request(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=50
             )
 
             question = response.strip().strip('"').strip("'")
+            question = re.sub(r'^(Question:|Q:)\s*', '', question, flags=re.IGNORECASE)
 
-            # Clean up any extra formatting
-            question = re.sub(r'^(Question:|Ask:|Q:)\s*', '', question, flags=re.IGNORECASE)
-            question = re.sub(r'^\d+[\.\)]\s*', '', question)  # Remove numbered prefixes
-
-            # Cache it
             self._question_cache[cache_key] = question
-
-            logger.info(f"[generate_field_question] Generated: '{question}' for {field_type} field (label: '{field_label}')")
+            logger.info(f"Generated question: '{question}' for field '{field_label}'")
             return question
 
         except Exception as e:
-            logger.error(f"CRITICAL: Failed to generate question for field '{field_label}': {type(e).__name__}: {str(e)}")
-            # Return error message so you know the LLM failed
-            return f"ERROR: Failed to generate question for {field_label}. LLM timeout or error."
+            logger.error(f"Failed to generate question: {e}")
+            # Simple fallback
+            return f"Please provide your {field_label}."
 
-    async def generate_response(
-        self,
-        action: str,
-        **kwargs
-    ) -> str:
-        """
-        Generate a natural language response for various actions.
+    # =========================================================================
+    # RESPONSE GENERATION
+    # =========================================================================
 
-        Args:
-            action: Type of response to generate
-            **kwargs: Additional parameters for response generation
-
-        Returns:
-            Generated response text
-        """
-        # NOTE: ask_field is now handled by generate_field_question() instead
-        # This method handles other actions like greeting, confirmation, error, etc.
-        
-        # For other actions, use LLM
-        prompts = {
-            "greeting": self._greeting_prompt,
-            "ask_field": self._ask_field_prompt,  # Won't be used due to above
-            "confirm_value": self._confirm_value_prompt,
-            "validation_error": self._validation_error_prompt,
-            "next_field": self._next_field_prompt,
-            "completion": self._completion_prompt,
-            "error": self._error_prompt,
-            "repeat": self._repeat_prompt
+    async def generate_response(self, action: str, **kwargs) -> str:
+        """Generate natural language responses for various actions."""
+        prompt_builders = {
+            "greeting": self._build_greeting_prompt,
+            "confirm_value": self._build_confirm_prompt,
+            "validation_error": self._build_validation_error_prompt,
+            "next_field": self._build_next_field_prompt,
+            "completion": self._build_completion_prompt,
+            "error": self._build_error_prompt,
+            "repeat": self._build_repeat_prompt,
         }
 
-        prompt_func = prompts.get(action, self._default_prompt)
-        system_prompt, user_message = prompt_func(**kwargs)
+        builder = prompt_builders.get(action)
+        if not builder:
+            return self._get_fallback_response(action, **kwargs)
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ]
+        prompt = builder(**kwargs)
 
         try:
-            response = await self._make_request(messages, temperature=0.7, max_tokens=150)
-            result = response.strip()
-            
-            # DEBUG: Log what question is being generated
-            logger.info(f"[{action}] Generated text: '{result}'")
-            
-            return result
+            response = await self._make_request(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5,
+                max_tokens=100
+            )
+            return response.strip().strip('"')
         except Exception as e:
-            logger.error(f"Error generating response: {e}")
-            return self._fallback_response(action, **kwargs)
+            logger.error(f"Response generation failed: {e}")
+            return self._get_fallback_response(action, **kwargs)
 
-    def _greeting_prompt(self, **kwargs) -> tuple:
-        system = """You are a friendly voice assistant helping users fill government forms.
-Generate a brief, warm greeting. Say hello and that you'll help fill the form.
-Keep it under 20 words. Be friendly and professional."""
-
+    def _build_greeting_prompt(self, **kwargs) -> str:
         form_name = kwargs.get("form_name", "the form")
-        user = f"Generate a greeting for helping fill: {form_name}"
+        return f"""Generate a brief, friendly greeting for a voice assistant helping fill "{form_name}".
+Keep it under 20 words. Be warm but professional.
+OUTPUT: Write ONLY the greeting."""
 
-        return system, user
-
-    def _ask_field_prompt(self, **kwargs) -> tuple:
-        """
-        Generate prompt for asking about a field using LLM.
-        This method is used as a fallback when generate_field_question() is not available.
-        Uses LLM to intelligently handle name fields and other field types.
-        """
-        field_label = kwargs.get("field_label", "this field")
-        field_type = kwargs.get("field_type", "text")
-        field_id = kwargs.get("field_id", "")
-        pattern = kwargs.get("pattern", "")
-        max_length = kwargs.get("max_length")
-        options = kwargs.get("options", [])
-
-        # Build field context for LLM
-        field_info_parts = [f"Label: {field_label}", f"Type: {field_type}"]
-        if field_id:
-            field_info_parts.append(f"Field ID: {field_id}")
-        if pattern:
-            field_info_parts.append(f"Pattern: {pattern}")
-        if max_length:
-            field_info_parts.append(f"Max Length: {max_length}")
-        if options:
-            options_text = ", ".join([str(opt) for opt in options[:5]])
-            field_info_parts.append(f"Options: {options_text}")
-
-        system = """You are an expert at generating natural, conversational questions for form fields.
-Analyze the field information and generate a question that:
-1. Is natural and conversational (not robotic)
-2. For NAME FIELDS: Carefully analyze the label to detect relationship context:
-   - "Father's Name" / "Father Name" → Ask "What is your father's name?"
-   - "Mother's Name" / "Mother Name" → Ask "What is your mother's name?"
-   - "Spouse Name" / "Husband's Name" / "Wife's Name" → Ask "What is your spouse's name?"
-   - "Full Name" / "Name" → Ask "What is your full name?" or "What's your name?"
-   - Look for keywords: father, mother, spouse, husband, wife, guardian, parent
-3. For numeric fields: Provide helpful instructions about digit grouping
-4. For dates: Encourage natural speech format
-5. Keep it under 25 words and sound friendly
-
-Generate ONLY the question text, nothing else."""
-
-        user = f"""Generate a natural question for this form field:
-
-{chr(10).join(field_info_parts)}
-
-IMPORTANT: For name fields, analyze the label carefully to detect if it's asking about:
-- The user themselves (Full Name, Name)
-- A relative (Father's Name, Mother's Name, Spouse Name)
-
-Generate a question that reflects the actual relationship context. Return ONLY the question text."""
-
-        return system, user
-
-    def _confirm_value_prompt(self, **kwargs) -> tuple:
-        system = """You are a voice assistant confirming a form field value.
-Generate a brief, natural confirmation question that includes the value.
-Keep it under 15 words. Be friendly: "I heard [value]. Is that correct?" or "You said [value], is that right?"."""
-
-        field_label = kwargs.get("field_label", "the field")
+    def _build_confirm_prompt(self, **kwargs) -> str:
+        field_label = kwargs.get("field_label", "field")
         value = kwargs.get("value", "")
+        return f"""Generate a brief confirmation question.
+Field: {field_label}
+Value: {value}
+Keep it under 12 words. Example: "I heard {value}. Is that correct?"
+OUTPUT: Write ONLY the confirmation question."""
 
-        user = f"Confirm this value for {field_label}: '{value}'"
-
-        return system, user
-
-    def _validation_error_prompt(self, **kwargs) -> tuple:
-        system = """You are a voice assistant explaining a validation error.
-Be brief but helpful - explain what's wrong and ask to try again.
-Keep it under 20 words. Be friendly and encouraging."""
-
-        field_label = kwargs.get("field_label", "the field")
+    def _build_validation_error_prompt(self, **kwargs) -> str:
+        field_label = kwargs.get("field_label", "field")
         error = kwargs.get("error", "Invalid value")
+        return f"""Generate a brief, friendly error message.
+Field: {field_label}
+Error: {error}
+Keep it under 20 words. Be helpful and encouraging.
+OUTPUT: Write ONLY the error message."""
 
-        user = f"Explain this validation error for {field_label}: {error}"
-
-        return system, user
-
-    def _next_field_prompt(self, **kwargs) -> tuple:
-        system = """You are a voice assistant moving to the next form field.
-Generate a brief, friendly transition. Acknowledge and move to next field.
-Keep it under 12 words. Be natural: "Got it. Next..." or "Okay, now..."."""
-
-        previous_field = kwargs.get("previous_field", "")
+    def _build_next_field_prompt(self, **kwargs) -> str:
+        previous = kwargs.get("previous_field", "")
         next_field = kwargs.get("next_field", "")
+        return f"""Generate a brief transition from "{previous}" to "{next_field}".
+Keep it under 10 words. Example: "Got it. Now, [next question]"
+OUTPUT: Write ONLY the transition."""
 
-        user = f"Moving from '{previous_field}' to asking for '{next_field}'"
-
-        return system, user
-
-    def _completion_prompt(self, **kwargs) -> tuple:
-        system = """You are a voice assistant that has finished helping fill a form.
-Generate a brief, congratulatory completion message.
-Keep it under 18 words. Be friendly and positive."""
-
+    def _build_completion_prompt(self, **kwargs) -> str:
         form_name = kwargs.get("form_name", "the form")
-        field_count = kwargs.get("field_count", 0)
+        return f"""Generate a brief completion message for finishing "{form_name}".
+Keep it under 15 words. Be congratulatory.
+OUTPUT: Write ONLY the completion message."""
 
-        user = f"Form '{form_name}' is complete. {field_count} fields were filled."
-
-        return system, user
-
-    def _error_prompt(self, **kwargs) -> tuple:
-        system = """You are a voice assistant handling an error.
-Be brief but polite - apologize and ask to try again.
-Keep it under 15 words. Be friendly and reassuring."""
-
+    def _build_error_prompt(self, **kwargs) -> str:
         error = kwargs.get("error", "Something went wrong")
-        user = f"Handle this error: {error}"
+        return f"""Generate a brief, apologetic error message for: {error}
+Keep it under 15 words. Ask to try again.
+OUTPUT: Write ONLY the error message."""
 
-        return system, user
+    def _build_repeat_prompt(self, **kwargs) -> str:
+        return """Generate a brief, polite request to repeat.
+Keep it under 10 words.
+OUTPUT: Write ONLY the request."""
 
-    def _repeat_prompt(self, **kwargs) -> tuple:
-        system = """You are a voice assistant asking user to repeat.
-Be brief but polite - ask them to repeat what they said.
-Keep it under 12 words. Be friendly."""
-
-        user = "Ask user to repeat what they said"
-        return system, user
-
-    def _default_prompt(self, **kwargs) -> tuple:
-        system = "You are a helpful voice assistant."
-        user = kwargs.get("message", "Say something helpful")
-        return system, user
-
-    def _fallback_response(self, action: str, **kwargs) -> str:
-        """Fallback responses when LLM fails - returns error messages for debugging."""
-        field_label = kwargs.get('field_label', 'field')
-        value = kwargs.get('value', 'value')
-        error = kwargs.get('error', 'error')
-        
+    def _get_fallback_response(self, action: str, **kwargs) -> str:
+        """Fallback responses when LLM fails."""
         fallbacks = {
-            "greeting": "ERROR: LLM failed to generate greeting. Check OpenRouter API.",
-            "ask_field": f"ERROR: LLM failed to generate question for {field_label}. Check OpenRouter API.",
-            "confirm_value": f"ERROR: LLM failed to generate confirmation for {value}. Check OpenRouter API.",
-            "validation_error": f"ERROR: LLM failed to generate validation error for {error}. Check OpenRouter API.",
-            "next_field": f"ERROR: LLM failed to generate transition. Check OpenRouter API.",
-            "completion": "ERROR: LLM failed to generate completion message. Check OpenRouter API.",
-            "error": "ERROR: LLM failed to generate error message. Check OpenRouter API.",
-            "repeat": "ERROR: LLM failed to generate repeat request. Check OpenRouter API."
+            "greeting": "Hello! I'll help you fill out this form. Let's begin.",
+            "confirm_value": f"I heard {kwargs.get('value', 'that')}. Is that correct?",
+            "validation_error": f"That doesn't seem right for {kwargs.get('field_label', 'this field')}. Please try again.",
+            "next_field": "Okay, moving on.",
+            "completion": "Great! The form is complete.",
+            "error": "Sorry, something went wrong. Please try again.",
+            "repeat": "I didn't catch that. Could you repeat?",
         }
-        return fallbacks.get(action, f"ERROR: LLM failed for action '{action}'. Check OpenRouter API.")
+        return fallbacks.get(action, "Please continue.")
+
+    # =========================================================================
+    # UTILITY
+    # =========================================================================
 
     def get_model_info(self) -> Dict[str, str]:
         """Get information about the configured model."""

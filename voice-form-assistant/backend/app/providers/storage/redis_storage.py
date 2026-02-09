@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any
 
 from .base import SessionStorage
 from ...services.session_manager import SessionManager, ConversationSession
-from ...core.config import get_config
+from ...config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +32,22 @@ class RedisStorage(SessionStorage):
                    If None, loads from global config.
         """
         if config is None:
-            app_config = get_config()
-            config = app_config.get_provider_config('storage', 'redis')
+            # Use simple settings
+            config = {
+                'host': settings.REDIS_HOST,
+                'port': settings.REDIS_PORT,
+                'db': settings.REDIS_DB,
+                'password': settings.REDIS_PASSWORD,
+                'ttl': settings.SESSION_TTL,
+                'prefix': 'voice_assistant:'
+            }
 
         self.config = config
-        self.host = config.get('host', 'localhost')
-        self.port = config.get('port', 6379)
-        self.db = config.get('db', 0)
-        self.password = config.get('password', '')
-        self.ttl = config.get('ttl', 3600)
+        self.host = config.get('host', settings.REDIS_HOST)
+        self.port = config.get('port', settings.REDIS_PORT)
+        self.db = config.get('db', settings.REDIS_DB)
+        self.password = config.get('password', settings.REDIS_PASSWORD)
+        self.ttl = config.get('ttl', settings.SESSION_TTL)
         self.prefix = config.get('prefix', 'voice_assistant:')
 
         # Initialize the underlying session manager

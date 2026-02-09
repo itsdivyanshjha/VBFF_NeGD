@@ -23,7 +23,6 @@ from .api.http import router as http_router
 from .api.websocket import websocket_endpoint
 from .services.assemblyai_service import assemblyai_service
 from .services.session_manager import session_manager
-from .core.init import initialize_application, get_app_info
 
 # Configure logging
 logging.basicConfig(
@@ -43,10 +42,17 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Voice Form Assistant...")
 
-    # Initialize application (load config, field registry, validate settings)
-    init_success = initialize_application()
-    if not init_success:
-        logger.error("Application initialization failed - server may not function correctly")
+    # Simple initialization - just log settings validation
+    logger.info("Validating settings...")
+    if not settings.ASSEMBLYAI_API_KEY:
+        logger.error("ASSEMBLYAI_API_KEY not set - speech recognition will fail")
+    if not settings.OPENROUTER_API_KEY:
+        logger.error("OPENROUTER_API_KEY not set - field extraction will fail")
+    
+    logger.info(f"Server configured for {settings.HOST}:{settings.PORT}")
+    logger.info(f"Supported languages: {settings.SUPPORTED_LANGUAGES}")
+    logger.info(f"Confidence thresholds: High={settings.CONFIDENCE_HIGH}, Medium={settings.CONFIDENCE_MEDIUM}, Low={settings.CONFIDENCE_LOW}")
+    logger.info("Voice Form Assistant started successfully")
 
     # Connect to Redis
     try:

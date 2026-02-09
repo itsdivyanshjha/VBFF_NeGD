@@ -13,7 +13,7 @@ from ...services.assemblyai_service import (
     TranscriptionResult as LegacyTranscriptionResult,
     SUPPORTED_LANGUAGES
 )
-from ...core.config import get_config
+from ...config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +35,17 @@ class AssemblyAIProvider(STTProvider):
                    If None, loads from global config.
         """
         if config is None:
-            app_config = get_config()
-            config = app_config.get_provider_config('stt', 'assemblyai')
+            # Use simple settings
+            config = {
+                'api_key': settings.ASSEMBLYAI_API_KEY,
+                'base_url': settings.ASSEMBLYAI_BASE_URL,
+                'timeout': settings.ASSEMBLYAI_TIMEOUT
+            }
 
         self.config = config
-        self.api_key = config.get('api_key', '')
-        self.base_url = config.get('base_url', 'https://api.assemblyai.com/v2')
-        self.timeout = config.get('timeout', 60)
+        self.api_key = config.get('api_key', settings.ASSEMBLYAI_API_KEY)
+        self.base_url = config.get('base_url', settings.ASSEMBLYAI_BASE_URL)
+        self.timeout = config.get('timeout', settings.ASSEMBLYAI_TIMEOUT)
 
         # Initialize the underlying AssemblyAI service
         self._service = AssemblyAIService()

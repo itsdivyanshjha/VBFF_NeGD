@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NSP Application Form - UMANG (Standalone Test Version)</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #4CAF50;
+            color: white;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .section {
+            margin-bottom: 35px;
+        }
+
+        .section-title {
+            color: #667eea;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .form-row.full {
+            grid-template-columns: 1fr;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .required {
+            color: #e53935;
+            margin-left: 4px;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        input[type="tel"],
+        input[type="date"],
+        input[type="number"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .field-description {
+            font-size: 12px;
+            color: #757575;
+            margin-top: 4px;
+        }
+
+        .radio-group,
+        .checkbox-group {
+            display: flex;
+            gap: 20px;
+            margin-top: 8px;
+        }
+
+        .radio-group label,
+        .checkbox-group label {
+            font-weight: 400;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .radio-group input[type="radio"],
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin: 0;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e0e0;
+        }
+
+        button {
+            padding: 14px 40px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button[type="submit"] {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        button[type="submit"]:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button[type="button"] {
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        button[type="button"]:hover {
+            background: #e0e0e0;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin-bottom: 25px;
+            border-radius: 4px;
+        }
+
+        .info-box strong {
+            color: #1976D2;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        /* Voice Assistant Highlight */
+        .va-highlighted-field {
+            border-color: #4CAF50 !important;
+            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.2) !important;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.2);
+            }
+            50% {
+                box-shadow: 0 0 0 6px rgba(76, 175, 80, 0.1);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <span class="badge">🎙️ Voice Assistant Enabled</span>
+            <h1>National Scholarship Portal</h1>
+            <p>Application Form - Academic Year 2026-27</p>
+        </div>
+
+        <div class="info-box">
+            <strong>📋 Instructions:</strong>
+            Use your voice to fill this form! Say field names followed by values.
+            All fields marked with <span style="color: #e53935;">*</span> are mandatory.
+        </div>
+
+        <form id="nspApplicationForm">
+            <!-- Personal Details Section -->
+            <div class="section">
+                <h2 class="section-title">📋 Personal Details</h2>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="aadhaarNumber">
+                            Aadhaar Number<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="aadhaarNumber" 
+                            name="aadhaarNumber" 
+                            placeholder="Enter 12-digit Aadhaar"
+                            pattern="[2-9][0-9]{11}"
+                            maxlength="12"
+                            required
+                        >
+                        <small class="field-description">12-digit Aadhaar number</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="studentName">
+                            Student Name<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="studentName" 
+                            name="studentName" 
+                            placeholder="As per Aadhaar Card"
+                            required
+                        >
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="dateOfBirth">
+                            Date of Birth<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="date" 
+                            id="dateOfBirth" 
+                            name="dateOfBirth" 
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            Gender<span class="required">*</span>
+                        </label>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="gender" value="Male" required>
+                                Male
+                            </label>
+                            <label>
+                                <input type="radio" name="gender" value="Female">
+                                Female
+                            </label>
+                            <label>
+                                <input type="radio" name="gender" value="Other">
+                                Other
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="mobileNumber">
+                            Mobile Number<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="tel" 
+                            id="mobileNumber" 
+                            name="mobileNumber" 
+                            placeholder="10-digit mobile number"
+                            pattern="[6-9][0-9]{9}"
+                            maxlength="10"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="emailAddress">
+                            Email Address<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="email" 
+                            id="emailAddress" 
+                            name="emailAddress" 
+                            placeholder="student@example.com"
+                            required
+                        >
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="category">
+                            Category<span class="required">*</span>
+                        </label>
+                        <select id="category" name="category" required>
+                            <option value="">-- Select Category --</option>
+                            <option value="General">General</option>
+                            <option value="SC">SC (Scheduled Caste)</option>
+                            <option value="ST">ST (Scheduled Tribe)</option>
+                            <option value="OBC">OBC (Other Backward Class)</option>
+                            <option value="EWS">EWS (Economically Weaker Section)</option>
+                            <option value="Minority">Minority</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="religion">
+                            Religion
+                        </label>
+                        <select id="religion" name="religion">
+                            <option value="">-- Select Religion --</option>
+                            <option value="Hindu">Hindu</option>
+                            <option value="Muslim">Muslim</option>
+                            <option value="Christian">Christian</option>
+                            <option value="Sikh">Sikh</option>
+                            <option value="Buddhist">Buddhist</option>
+                            <option value="Jain">Jain</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>
+                            Person with Disability
+                        </label>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="disability" value="Yes">
+                                Yes
+                            </label>
+                            <label>
+                                <input type="radio" name="disability" value="No" checked>
+                                No
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="annualIncome">
+                            Annual Family Income<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="number" 
+                            id="annualIncome" 
+                            name="annualIncome" 
+                            placeholder="In Rupees"
+                            required
+                        >
+                    </div>
+                </div>
+            </div>
+
+            <!-- Academic Details Section -->
+            <div class="section">
+                <h2 class="section-title">🎓 Academic Details</h2>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="domicileState">
+                            Domicile State<span class="required">*</span>
+                        </label>
+                        <select id="domicileState" name="domicileState" required>
+                            <option value="">-- Select State --</option>
+                            <option value="Andhra Pradesh">Andhra Pradesh</option>
+                            <option value="Arunachal Pradesh">Arunachal Pradesh</option>
+                            <option value="Assam">Assam</option>
+                            <option value="Bihar">Bihar</option>
+                            <option value="Chhattisgarh">Chhattisgarh</option>
+                            <option value="Delhi">Delhi</option>
+                            <option value="Goa">Goa</option>
+                            <option value="Gujarat">Gujarat</option>
+                            <option value="Haryana">Haryana</option>
+                            <option value="Himachal Pradesh">Himachal Pradesh</option>
+                            <option value="Jharkhand">Jharkhand</option>
+                            <option value="Karnataka">Karnataka</option>
+                            <option value="Kerala">Kerala</option>
+                            <option value="Madhya Pradesh">Madhya Pradesh</option>
+                            <option value="Maharashtra">Maharashtra</option>
+                            <option value="Punjab">Punjab</option>
+                            <option value="Rajasthan">Rajasthan</option>
+                            <option value="Tamil Nadu">Tamil Nadu</option>
+                            <option value="Telangana">Telangana</option>
+                            <option value="Uttar Pradesh">Uttar Pradesh</option>
+                            <option value="West Bengal">West Bengal</option>
+                        </select>
+                        <small class="field-description">Cannot be changed later</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="courseName">
+                            Course Name<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="courseName" 
+                            name="courseName" 
+                            placeholder="e.g., B.Tech, B.Sc, M.A."
+                            required
+                        >
+                    </div>
+                </div>
+
+                <div class="form-row full">
+                    <div class="form-group">
+                        <label for="instituteName">
+                            Institute Name<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="instituteName" 
+                            name="instituteName" 
+                            placeholder="Full name of your institution"
+                            required
+                        >
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="modeOfStudy">
+                            Mode of Study<span class="required">*</span>
+                        </label>
+                        <select id="modeOfStudy" name="modeOfStudy" required>
+                            <option value="">-- Select Mode --</option>
+                            <option value="Regular">Regular</option>
+                            <option value="Distance">Distance/Correspondence</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="admissionYear">
+                            Admission Year<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="admissionYear" 
+                            name="admissionYear" 
+                            placeholder="e.g., 2025"
+                            pattern="[0-9]{4}"
+                            maxlength="4"
+                            required
+                        >
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>
+                            Student Type<span class="required">*</span>
+                        </label>
+                        <div class="radio-group">
+                            <label>
+                                <input type="radio" name="studentType" value="Day Scholar" required>
+                                Day Scholar
+                            </label>
+                            <label>
+                                <input type="radio" name="studentType" value="Hosteler">
+                                Hosteler
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="admissionFees">
+                            Admission Fees
+                        </label>
+                        <input 
+                            type="number" 
+                            id="admissionFees" 
+                            name="admissionFees" 
+                            placeholder="In Rupees"
+                        >
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bank Details Section -->
+            <div class="section">
+                <h2 class="section-title">🏦 Bank Details</h2>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="bankName">
+                            Bank Name<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="bankName" 
+                            name="bankName" 
+                            placeholder="Name of your bank"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="ifscCode">
+                            IFSC Code<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="ifscCode" 
+                            name="ifscCode" 
+                            placeholder="11-character IFSC code"
+                            pattern="[A-Z]{4}0[A-Z0-9]{6}"
+                            maxlength="11"
+                            required
+                        >
+                        <small class="field-description">Format: ABCD0123456</small>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="accountNumber">
+                            Account Number<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="accountNumber" 
+                            name="accountNumber" 
+                            placeholder="Bank account number"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="accountHolderName">
+                            Account Holder Name<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="accountHolderName" 
+                            name="accountHolderName" 
+                            placeholder="Name as per bank records"
+                            required
+                        >
+                        <small class="field-description">Must be Aadhaar-seeded account</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Family Details Section -->
+            <div class="section">
+                <h2 class="section-title">👨‍👩‍👧‍👦 Family/Guardian Details</h2>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="fatherName">
+                            Father's/Guardian's Name<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="fatherName" 
+                            name="fatherName" 
+                            placeholder="Full name"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="motherName">
+                            Mother's Name<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="motherName" 
+                            name="motherName" 
+                            placeholder="Full name"
+                            required
+                        >
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="guardianProfession">
+                            Guardian's Profession
+                        </label>
+                        <input 
+                            type="text" 
+                            id="guardianProfession" 
+                            name="guardianProfession" 
+                            placeholder="Occupation"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="guardianIncome">
+                            Guardian's Annual Income
+                        </label>
+                        <input 
+                            type="number" 
+                            id="guardianIncome" 
+                            name="guardianIncome" 
+                            placeholder="In Rupees"
+                        >
+                    </div>
+                </div>
+            </div>
+
+            <!-- Address Section -->
+            <div class="section">
+                <h2 class="section-title">📍 Contact Details</h2>
+
+                <div class="form-row full">
+                    <div class="form-group">
+                        <label for="permanentAddress">
+                            Permanent Address<span class="required">*</span>
+                        </label>
+                        <textarea 
+                            id="permanentAddress" 
+                            name="permanentAddress" 
+                            placeholder="Enter your complete address"
+                            required
+                        ></textarea>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="district">
+                            District<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="district" 
+                            name="district" 
+                            placeholder="District name"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="state">
+                            State<span class="required">*</span>
+                        </label>
+                        <select id="state" name="state" required>
+                            <option value="">-- Select State --</option>
+                            <option value="Delhi">Delhi</option>
+                            <option value="Maharashtra">Maharashtra</option>
+                            <option value="Karnataka">Karnataka</option>
+                            <option value="Tamil Nadu">Tamil Nadu</option>
+                            <option value="Uttar Pradesh">Uttar Pradesh</option>
+                            <option value="West Bengal">West Bengal</option>
+                            <!-- Add more states as needed -->
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="pincode">
+                            PIN Code<span class="required">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="pincode" 
+                            name="pincode" 
+                            placeholder="6-digit PIN code"
+                            pattern="[0-9]{6}"
+                            maxlength="6"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <!-- Empty for layout -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="button-group">
+                <button type="button" onclick="saveDraft()">Save Draft</button>
+                <button type="button" onclick="resetForm()">Reset Form</button>
+                <button type="submit">Submit Application</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Form Handling JavaScript -->
+    <script>
+        // Form submission handler
+        document.getElementById('nspApplicationForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            // Collect form data
+            const formData = new FormData(this);
+            const data = {};
+
+            for (let [key, value] of formData.entries()) {
+                data[key] = value;
+            }
+
+            console.log('Form submitted:', data);
+            alert('Application submitted successfully!\n\nCheck console for form data.');
+        });
+
+        // Save draft function
+        function saveDraft() {
+            const formData = new FormData(document.getElementById('nspApplicationForm'));
+            const data = {};
+
+            for (let [key, value] of formData.entries()) {
+                data[key] = value;
+            }
+
+            localStorage.setItem('nspDraft', JSON.stringify(data));
+            alert('Draft saved successfully!');
+            console.log('Draft saved:', data);
+        }
+
+        // Load draft on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            const draft = localStorage.getItem('nspDraft');
+
+            if (draft) {
+                const data = JSON.parse(draft);
+
+                for (let key in data) {
+                    const element = document.getElementById(key) || document.querySelector(`[name="${key}"]`);
+
+                    if (element) {
+                        if (element.type === 'radio') {
+                            const radio = document.querySelector(`[name="${key}"][value="${data[key]}"]`);
+                            if (radio) radio.checked = true;
+                        } else {
+                            element.value = data[key];
+                        }
+                    }
+                }
+
+                console.log('Draft loaded:', data);
+            }
+        });
+
+        // Reset form function
+        function resetForm() {
+            if (confirm('Are you sure you want to reset all fields?')) {
+                document.getElementById('nspApplicationForm').reset();
+                localStorage.removeItem('nspDraft');
+            }
+        }
+
+        // Export form structure as JSON Schema
+        window.getFormSchema = function() {
+            const schema = {
+                title: "National Scholarship Portal - Application Form",
+                type: "object",
+                required: [
+                    "aadhaarNumber", "studentName", "dateOfBirth", "gender",
+                    "mobileNumber", "emailAddress", "category", "annualIncome",
+                    "domicileState", "courseName", "instituteName", "modeOfStudy",
+                    "admissionYear", "studentType", "bankName", "ifscCode",
+                    "accountNumber", "accountHolderName", "fatherName", "motherName",
+                    "permanentAddress", "district", "state", "pincode"
+                ],
+                properties: {}
+            };
+
+            // Get all form fields
+            const fields = document.querySelectorAll('#nspApplicationForm input, #nspApplicationForm select, #nspApplicationForm textarea');
+
+            fields.forEach(field => {
+                if (field.name) {
+                    schema.properties[field.name] = {
+                        type: field.type === 'number' ? 'number' : 'string',
+                        title: field.labels ? field.labels[0].textContent.replace('*', '').trim() : field.name
+                    };
+
+                    if (field.placeholder) {
+                        schema.properties[field.name].description = field.placeholder;
+                    }
+
+                    if (field.pattern) {
+                        schema.properties[field.name].pattern = field.pattern;
+                    }
+
+                    if (field.tagName === 'SELECT') {
+                        const options = Array.from(field.options)
+                            .filter(opt => opt.value)
+                            .map(opt => opt.value);
+                        if (options.length > 0) {
+                            schema.properties[field.name].enum = options;
+                        }
+                    }
+                }
+            });
+
+            return schema;
+        };
+
+        // Log form structure to console
+        console.log('NSP Form loaded successfully!');
+        console.log('Call window.getFormSchema() to get JSON Schema');
+    </script>
+
+    <!-- INJECT YOUR VOICE ASSISTANT HERE -->
+    <!-- <script src="http://localhost:8000/static/embed.js"></script> -->
+</body>
+</html>

@@ -3,11 +3,7 @@ WebSocket Handler.
 Main communication endpoint for voice form filling.
 Supports multilingual input via AssemblyAI with automatic language detection.
 
-Phase 1 Refactoring:
-- Uses ConfigLoader for all settings (no hardcoded values)
-- Uses FieldTypeRegistry for field type detection and prompts
-- Uses provider interfaces (STTProvider, LLMProvider, TTSProvider, SessionStorage)
-- Maintains full backward compatibility
+Uses simple .env configuration for all settings (no hardcoded values).
 """
 
 import logging
@@ -29,15 +25,7 @@ from ..services.question_builder import build_next_field_transition
 from ..services.validators import validate_field_value
 from ..config import settings
 
-# New imports for Phase 1
-from ..core.config import get_config
-from ..core.field_registry import get_field_registry
-
 logger = logging.getLogger(__name__)
-
-# Load configuration
-config = get_config()
-field_registry = get_field_registry()
 
 
 class VoiceFormHandler:
@@ -57,29 +45,23 @@ class VoiceFormHandler:
         self._detected_language: Optional[str] = None  # Track detected language for hints
         self._empty_transcription_count = 0  # Track consecutive empty transcriptions
 
-        # Load configuration values (no hardcoding)
-        self.min_audio_bytes = config.get('audio.validation.min_bytes', 4000)
-        self.min_audio_duration = config.get('audio.validation.min_duration', 0.3)
-        self.max_retries = config.get('conversation.max_retries', 2)
-        self.empty_threshold = config.get('conversation.empty_transcription_threshold', 2)
+        # Load configuration values from simple settings
+        self.min_audio_bytes = settings.MIN_AUDIO_BYTES
+        self.min_audio_duration = settings.MIN_AUDIO_DURATION
+        self.max_retries = settings.MAX_RETRIES
+        self.empty_threshold = settings.EMPTY_TRANSCRIPTION_THRESHOLD
 
         # Confidence thresholds
-        self.confidence_high = config.get('conversation.transcription.high_confidence', 0.85)
-        self.confidence_medium = config.get('conversation.transcription.medium_confidence', 0.5)
-        self.confidence_low = config.get('conversation.transcription.low_confidence', 0.1)
+        self.confidence_high = settings.CONFIDENCE_HIGH
+        self.confidence_medium = settings.CONFIDENCE_MEDIUM
+        self.confidence_low = settings.CONFIDENCE_LOW
 
         # Confirmation keywords
-        self.positive_keywords = config.get('conversation.confirmation.positive_keywords', [
-            "yes", "yeah", "yep", "correct", "right", "haan", "ha", "okay", "ok", "sure", "confirm"
-        ])
-        self.negative_keywords = config.get('conversation.confirmation.negative_keywords', [
-            "no", "nope", "wrong", "incorrect", "nahi", "change", "different"
-        ])
+        self.positive_keywords = settings.POSITIVE_KEYWORDS
+        self.negative_keywords = settings.NEGATIVE_KEYWORDS
 
-        # Critical field types (from config)
-        self.critical_field_types = config.get('conversation.confirmation.critical_types', [
-            "aadhaar", "pan", "passport", "email", "mobile"
-        ])
+        # Critical field types (require confirmation)
+        self.critical_field_types = settings.CRITICAL_FIELD_TYPES
 
     async def send(self, message: Dict[str, Any]) -> bool:
         """Send message to client. Returns False if client disconnected."""
@@ -91,69 +73,17 @@ class VoiceFormHandler:
 
     def _enhance_field_metadata(self, field_info: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Enhance field metadata using field registry.
-
-        If field_type is not set or needs validation, use registry to detect it.
-        Also adds additional metadata from registry (prompts, validation rules, etc.).
-
-        Args:
-            field_info: Field metadata from client
-
-        Returns:
-            Enhanced field metadata
+        Simple field metadata enhancement.
+        Just returns the field info as-is, since the original simple approach works well.
         """
-        field_type = field_info.get('field_type')
-
-        # If no field_type or it's generic, try to detect from registry
-        if not field_type or field_type in ['text', 'number']:
-            detected_type = field_registry.detect_field_type(field_info)
-            if detected_type:
-                logger.info(f"Field registry detected type '{detected_type}' for field '{field_info.get('name')}'")
-                field_info['field_type'] = detected_type
-                field_type = detected_type
-
-        # Add registry metadata if field type exists in registry
-        if field_type and field_registry.exists(field_type):
-            field_def = field_registry.get(field_type)
-            if field_def:
-                # Add speech processing hints
-                field_info['speech_config'] = field_def.speech_processing
-
-                # Add validation rules if not already present
-                if not field_info.get('validation_rules'):
-                    field_info['validation_rules'] = field_def.validation
-
-                # Add UI hints
-                field_info['ui_hints'] = field_def.ui_hints
-
-                logger.debug(f"Enhanced field '{field_info.get('name')}' with registry metadata")
-
         return field_info
 
     def _get_field_prompt(self, field_info: Dict[str, Any], prompt_type: str = 'question') -> Optional[str]:
         """
-        Get prompt template from field registry.
-
-        Args:
-            field_info: Field metadata
-            prompt_type: Type of prompt ('question', 'confirmation', 'validation_error', 'retry')
-
-        Returns:
-            Prompt text if found, None otherwise
+        Simple field prompt generation.
+        Uses the deterministic question builder for consistency.
         """
-        field_type = field_info.get('field_type')
-        if not field_type:
-            return None
-
-        # Get prompt from registry
-        prompt = field_registry.get_prompt(
-            field_type,
-            prompt_type,
-            label=field_info.get('label', field_info.get('name', '')),
-            value=field_info.get('value', '')
-        )
-
-        return prompt if prompt else None
+        return None  # Fallback to default prompts
 
     def _normalize_entity_value(self, entity_text: str, entity_type: str) -> str:
         """
@@ -619,11 +549,25 @@ class VoiceFormHandler:
         # Use formatted value
         formatted_value = validation.get("formatted", extracted_value)
 
-        # Decide if confirmation needed based on field type and confidence
-        # Critical field types are loaded from config
+        # Determine if field is critical (requires confirmation)
         is_critical = current_field.get("field_type") in self.critical_field_types
 
-        if needs_confirmation or is_critical or confidence < self.confidence_high:
+        # Smart confirmation logic:
+        # - Critical fields (Aadhaar, PAN, etc.): Always confirm if confidence < 0.85
+        # - Non-critical fields: Auto-fill if confidence >= 0.65
+        # - Entity extractions (phone, email): Usually high confidence (0.95), auto-fill
+        
+        requires_strict_confirmation = (
+            needs_confirmation or 
+            is_critical or 
+            confidence < self.confidence_high  # 0.85 for critical fields
+        )
+        
+        # For non-critical fields, use medium confidence threshold
+        if not is_critical and confidence >= self.confidence_medium:  # 0.65
+            requires_strict_confirmation = False
+
+        if requires_strict_confirmation:
             # Request confirmation
             self.session.set_pending_confirmation(
                 field_id,

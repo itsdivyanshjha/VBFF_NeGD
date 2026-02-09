@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any, List
 
 from .base import TTSProvider, TTSResult
 from ...services.tts_service import TTSService
-from ...core.config import get_config
+from ...config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +46,16 @@ class GTTSProvider(TTSProvider):
                    If None, loads from global config.
         """
         if config is None:
-            app_config = get_config()
-            config = app_config.get_provider_config('tts', 'gtts')
+            # Use simple settings
+            config = {
+                'language': settings.TTS_LANGUAGE,
+                'tld': settings.TTS_TLD,
+                'slow': False  # Reasonable default
+            }
 
         self.config = config
-        self.default_language = config.get('language', 'en')
-        self.tld = config.get('tld', 'co.in')
+        self.default_language = config.get('language', settings.TTS_LANGUAGE)
+        self.tld = config.get('tld', settings.TTS_TLD)
         self.slow = config.get('slow', False)
 
         # Initialize the underlying TTS service
